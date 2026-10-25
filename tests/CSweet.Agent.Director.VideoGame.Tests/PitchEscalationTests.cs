@@ -94,7 +94,7 @@ public sealed class PitchEscalationTests
             var director = Guid.NewGuid(); var producer = Guid.NewGuid(); var project = Guid.NewGuid(); var team = Guid.NewGuid();
             var document = Guid.NewGuid(); var revision = Guid.NewGuid(); var session = Guid.NewGuid();
             var now = DateTimeOffset.UtcNow;
-            State = new() { WorkstreamId = project, TeamId = team, ProducerEmployeeId = producer, HandoffSessionId = session,
+            State = new() { WorkstreamId = project, TeamId = team, ProducerEmployeeId = producer, CreativeDirectorEmployeeId = Guid.NewGuid(), HandoffSessionId = session,
                 AcceptedVision = new(1, "pitch", "Game", Guid.NewGuid(), Guid.NewGuid(), "sha", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), now) };
             Review = new("pitch", document, revision, new string('a', 64), false, ["Audio license authority?"], "Authority affects audio scope.");
             Request = new(session, 2, 2, "Brief", "Plan", [], new(director, Guid.NewGuid(), "Naomi", "Director"),
@@ -118,7 +118,7 @@ public sealed class PitchEscalationTests
                 .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
                     (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
                         new Dictionary<string, string>(), [], "test", [], Guid.NewGuid(),
-                        r.StateKey.StartsWith("pitch-director:", StringComparison.Ordinal)
+                        r.StateKey.StartsWith("director-creative-review:") ? CreativeReviewFixture.Accepted(State, document, revision, Review.RevisionSha256) : r.StateKey.StartsWith("pitch-director:", StringComparison.Ordinal)
                             ? JsonSerializer.SerializeToElement(CachedAnswer, PitchProtocol.Json)
                             : JsonSerializer.SerializeToElement(State, PitchProtocol.Json), 1, now, now))))
                 .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(Session))

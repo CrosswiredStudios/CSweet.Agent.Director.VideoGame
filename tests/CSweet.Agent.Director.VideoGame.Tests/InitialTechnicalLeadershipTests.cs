@@ -29,7 +29,7 @@ public sealed class InitialTechnicalLeadershipTests
     }
 
     [Theory]
-    [InlineData("game-technical-director", 1, true, "brief-sha", true)]
+    [InlineData("game-technical-director", 1, true, "brief-sha", false)]
     [InlineData("game-engineer", 1, true, "brief-sha", false)]
     [InlineData("game-technical-director", 2, true, "brief-sha", false)]
     [InlineData("game-technical-director", 1, false, "brief-sha", false)]
