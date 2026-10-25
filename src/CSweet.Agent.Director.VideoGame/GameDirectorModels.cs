@@ -102,6 +102,7 @@ public sealed record GameDirectorOperatingState
     public Guid? BoardId { get; init; }
     public GameDirectorPhase Phase { get; init; } = GameDirectorPhase.Discovery;
     public bool IntakeChoiceAsked { get; init; }
+    public int OnboardingFlowVersion { get; init; }
     public Guid? OnboardingEventId { get; init; }
     public DateTimeOffset? OnboardingCompletedAt { get; init; }
     public ManagerPreferenceProfile ManagerPreferences { get; init; } = new();

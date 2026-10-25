@@ -1,6 +1,6 @@
 # Marcus Vale — Video Game Director
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.2** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.3** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -15,7 +15,7 @@ Each concept has independent durable state. Project-scoped work uses its explici
 
 ## CEO reporting
 
-Onboarding asks for cadence and format. Supported cadences are daily, weekdays, weekly (Friday), milestones, and on request. Timed reports require a local time and timezone, handle DST, and coalesce missed occurrences. Formats are messages, official report documents, or both. Enter `change reporting preferences` to update the contract or `report now` for an immediate update. Reports distinguish missing or old subordinate evidence from current verified progress.
+After the first official pitch is approved, attention review asks for cadence and format, one question at a time. Reporting setup never replaces the initial game-discovery question. Supported cadences are daily, weekdays, weekly (Friday), milestones, and on request. Timed reports require a local time and timezone, handle DST, and coalesce missed occurrences. Formats are messages, official report documents, or both. Enter `change reporting preferences` to update the contract or `report now` for an immediate update. Reports distinguish missing or old subordinate evidence from current verified progress.
 
 ## Contract and authority
 
@@ -40,6 +40,29 @@ read is required. Exact CEO document approval still gates the shared Creative Di
 recommendations. Attention review wakes legacy 0.1.0 tasks that waited for another chat message.
 Reporting questions carry real conversation-message anchors, and portfolio review tasks retain
 both source conversation and message references.
+
+## Sequential onboarding and upgrade recovery (0.1.3)
+
+`HandleOnboardedAsync` asks only about collaboration. Its answer leads to
+`InitialGameDirectionPrompt`: the kind of game, player experience, deployment platforms,
+technical choices, budget and other constraints. `PersistPitchAsync` creates and submits
+the Official Game Pitch to the CEO; an accepted exact revision gates `EnsureStaffingTodoAsync`
+and the shared Creative Director/Producer proposal. Specialist staffing follows the approved
+requirements and the Producer's planning, rather than an unconditional catalog roster.
+
+The platform's `ExecutiveDecisionService.CreateAsync` supersedes an agent's previous ordinary
+question in the same conversation. Releases 0.1.0–0.1.2 asked reporting immediately after
+collaboration, superseding discovery before the CEO could answer. `ContinueDirectorOnboardingAsync`
+repairs that saved state once during attention review or after the last reporting answer.
+It preserves completed reporting preferences, lets an unfinished reporting choice complete,
+and restores collaboration or game discovery according to the saved involvement preference.
+`OnboardingFlowVersion` and stable message/question keys prevent repeated upgrade prompts.
+The same method starts reporting only after pitch acceptance. No new capabilities are needed.
+
+`PitchContinuationTests` models the platform's question supersession and verifies fresh
+onboarding in all involvement modes, existing-install recovery, exact CEO document approval,
+and the subsequent two-role hiring proposal. Update through Installed Agents; no rehire or
+manual database repair is needed.
 
 ## Identity
 

@@ -7,6 +7,102 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 public sealed class PitchContinuationTests
 {
     [Theory]
+    [InlineData("Review milestones")]
+    [InlineData("Delegate decisions")]
+    [InlineData("Collaborate closely")]
+    public async Task Fresh_onboarding_preserves_discovery_then_official_pitch_approval_before_hiring(string involvement)
+    {
+        var f = new Journey();
+        f.States.Clear();
+        await f.OnboardAsync();
+        await f.OnboardAsync();
+        Assert.Single(f.Questions);
+        Assert.Contains("How involved", f.PendingQuestion!.Prompt);
+        Assert.Equal(0, f.ModelCalls);
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Single(f.Questions);
+
+        await f.AnswerAsync(involvement);
+        Assert.Contains("What kind of game", f.PendingQuestion!.Prompt);
+        Assert.Equal(0, f.ModelCalls);
+        await f.AnswerAsync(Journey.Direction);
+        Assert.Null(f.PendingQuestion);
+        Assert.Equal("Official Game Pitch", f.Document!.Title);
+        Assert.Equal("Submitted", f.Document.Status);
+        Assert.Equal(f.Manager, f.Reviewer);
+        Assert.Contains("Phaser", f.Document.Revisions.Single().Content);
+        Assert.Empty(f.Proposals);
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Null(f.PendingQuestion); // Reporting cannot replace discovery or refinement.
+        await f.Agent.HandlePersonalTodoAsync(f.Tasks.Values.Single(GameDirectorAgenda.IsVision), f.Context, default);
+        Assert.Empty(f.Proposals);
+
+        f.AcceptDocument();
+        await f.ApprovalEventAsync();
+        await f.Agent.HandlePersonalTodoAsync(f.Tasks.Values.Single(GameDirectorAgenda.IsStaffing), f.Context, default);
+        Assert.Equal(new[] { "creative-director", "game-producer" }, Assert.Single(f.Proposals).Roles.Select(x => x.RoleKey).Order());
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Contains("How often", f.PendingQuestion!.Prompt);
+        var count = f.Questions.Count;
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Equal(count, f.Questions.Count);
+        await f.AnswerAsync("Reports at milestones");
+        await f.AnswerAsync("Report format: messages");
+        Assert.Null(f.PendingQuestion);
+        Assert.NotNull(f.State.AcceptedVision);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Existing_reporting_only_onboarding_resumes_once_on_reconnect_or_final_reporting_answer(bool finishReporting)
+    {
+        var f = new Journey();
+        await f.OnboardAsync();
+        f.SetState(new() { IntakeConversationId = f.Chat, OnboardingEventId = Guid.NewGuid(),
+            Phase = GameDirectorPhase.InvolvementConfirmation, IntakeChoiceAsked = true });
+        await f.SendAsync("Decision: How often should I send portfolio updates?\nAnswer: Reports at milestones");
+        Assert.Contains("Which format", f.PendingQuestion!.Prompt);
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Contains("Which format", f.PendingQuestion!.Prompt); // Don't supersede an unfinished report choice.
+        if (finishReporting)
+            await f.AnswerAsync("Report format: messages");
+        else
+        {
+            // Reproduce 0.1.2: completed reporting, no discovery question left.
+            var stored = f.States["director-ceo-reporting"];
+            f.States[stored.StateKey] = stored with { Payload = JsonSerializer.SerializeToElement(
+                new VideoGameDirectorAgent.ReportingPreferences(f.Chat, "Milestones", "Messages", "UTC")) };
+            f.PendingQuestion = null;
+            await f.Agent.HandleAttentionReviewAsync(new(Guid.NewGuid(), DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow.AddMinutes(5), "reconnect"), f.Context, default);
+        }
+        Assert.Contains("How involved", f.PendingQuestion!.Prompt);
+        var count = f.Questions.Count;
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Equal(count, f.Questions.Count);
+        Assert.Equal(0, f.ModelCalls);
+        Assert.Empty(f.Proposals);
+        await f.AnswerAsync("Review milestones");
+        Assert.Contains("What kind of game", f.PendingQuestion!.Prompt);
+        await f.AnswerAsync(Journey.Direction);
+        Assert.Equal("Submitted", f.Document!.Status);
+        Assert.Empty(f.Proposals);
+    }
+
+    [Fact]
+    public async Task Legacy_explicit_involvement_resumes_with_game_direction_not_another_preference_question()
+    {
+        var f = new Journey();
+        await f.OnboardAsync();
+        f.SetState(f.State with { OnboardingEventId = Guid.NewGuid(), OnboardingFlowVersion = 0 });
+        await f.Agent.ContinueDirectorOnboardingAsync(f.Context, default);
+        Assert.Contains("What kind of game", f.PendingQuestion!.Prompt);
+        Assert.Empty(f.PendingQuestion.Options);
+        Assert.Equal(0, f.ModelCalls);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Direction_to_exact_approval_to_both_leadership_hires_survives_failed_generation(bool failFirst)
@@ -123,8 +219,11 @@ public sealed class PitchContinuationTests
         public readonly Dictionary<string, AgentOperatingStateResponse> States = [];
         public readonly Dictionary<string, PersonalTodoItem> Tasks = [];
         public readonly List<ResourceChangeProposalRequest> Proposals = [];
+        public readonly Dictionary<string, AskUserRequest> Questions = [];
+        public AskUserRequest? PendingQuestion;
+        private readonly Guid onboardingEvent = Guid.NewGuid();
         public AgentRuntimeContext Context;
-        private const string Direction = "Create a Breakout game in Phaser for desktop web, with polished effects and chiptune music. No budget or time constraint.";
+        public const string Direction = "Create a Breakout game in Phaser for desktop web, with polished effects and chiptune music. No budget or time constraint.";
         private string Key => VideoGameDirectorAgent.ProjectStateKey(null, Chat);
         public GameDirectorOperatingState State => States[Key].Payload.Deserialize<GameDirectorOperatingState>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         public void SetState(GameDirectorOperatingState state) => States[Key] = new(Guid.NewGuid(), Key, "test", 1, "Active", new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(), JsonSerializer.SerializeToElement(state), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -133,6 +232,15 @@ public sealed class PitchContinuationTests
             SetState(new() { IntakeConversationId = Chat, IntakeChoiceAsked = true, Phase = GameDirectorPhase.InvolvementConfirmation,
                 ManagerPreferences = new() { InvolvementMode = ManagerInvolvementMode.MilestoneReview, InvolvementWasExplicit = true } });
             var runtime = new AgentTestRuntime()
+                .RegisterCapability<CompleteAgentOnboardingRequest, CompleteAgentOnboardingResponse>(AgentLifecycleCapabilities.CompleteOnboarding,
+                    (_, _) => Task.FromResult(new CompleteAgentOnboardingResponse(true, DateTimeOffset.UtcNow)))
+                .RegisterCapability<AskUserRequest, UserQuestionResponse>(PlatformCapabilities.UserInputRequest, (r, _) => {
+                    Assert.NotEqual(r.ChatTurnId.HasValue, r.ConversationMessageId.HasValue);
+                    // Match ExecutiveDecisionService: a new ordinary question supersedes the previous one.
+                    if (Questions.TryAdd(r.IdempotencyKey, r)) PendingQuestion = r;
+                    return Task.FromResult(new UserQuestionResponse(Guid.NewGuid(), r.Prompt, "Pending", [], r.RecommendedOptionId,
+                        null, null, DateTimeOffset.UtcNow, null));
+                })
                 .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
                     (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(States.GetValueOrDefault(r.StateKey))))
                 .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite, (r, _) => {
@@ -194,6 +302,21 @@ public sealed class PitchContinuationTests
         public Task SendDirectionAsync() => Agent.HandleEventAsync(new(Guid.NewGuid(), Guid.NewGuid(), CommunicationEvents.MessageReceived,
             JsonSerializer.SerializeToElement(new CommunicationMessageReceivedEvent(Guid.NewGuid(), Chat.ToString(), Manager.ToString(), Direction,
                 new Dictionary<string,string> { [CommunicationMessageContextKeys.SenderOrganizationUserId] = Manager.ToString() }, Turn, 1, Message)), DateTimeOffset.UtcNow), Context, default);
+        public Task OnboardAsync() => Agent.HandleEventAsync(new(Guid.NewGuid(), onboardingEvent, AgentLifecycleEvents.Onboarded,
+            JsonSerializer.SerializeToElement(new AgentOnboardedEvent(Org, Employee, Manager, Chat, DateTimeOffset.UtcNow)), DateTimeOffset.UtcNow), Context, default);
+        public Task SendAsync(string text)
+        {
+            Message = Guid.NewGuid(); Turn = Guid.NewGuid();
+            return Agent.HandleEventAsync(new(Guid.NewGuid(), Guid.NewGuid(), CommunicationEvents.MessageReceived,
+                JsonSerializer.SerializeToElement(new CommunicationMessageReceivedEvent(Guid.NewGuid(), Chat.ToString(), Manager.ToString(), text,
+                    new Dictionary<string,string> { [CommunicationMessageContextKeys.SenderOrganizationUserId] = Manager.ToString() }, Turn, 1, Message)), DateTimeOffset.UtcNow), Context, default);
+        }
+        public Task AnswerAsync(string text)
+        {
+            var prompt = Assert.IsType<AskUserRequest>(PendingQuestion).Prompt;
+            PendingQuestion = null;
+            return SendAsync($"Decision: {prompt}\nAnswer: {text}");
+        }
         public void AcceptDocument() => Document = Document! with { Status = "Approved", AcceptedRevisionId = Document.LatestRevisionId,
             Revisions = [Document.Revisions.Single() with { Status = "Accepted", DecidedAt = DateTimeOffset.UtcNow }] };
         public Task ApprovalEventAsync()

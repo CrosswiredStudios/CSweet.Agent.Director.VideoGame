@@ -84,7 +84,10 @@ public sealed partial class VideoGameDirectorAgent
                 "Enter the update time and timezone, for example 'Report time: 09:00 America/Los_Angeles'. Weekly reports arrive on Friday.",
                 [], string.Empty, $"director-report-time:{incoming.MessageId:N}"), token);
         else
+        {
             await EnsureReportingTodoAsync(updated, context, token);
+            await ContinueDirectorOnboardingAsync(context, token);
+        }
         await stream.CommitAsync(updated.Format is null || updated.TimeZone is null
             ? "Your reporting preference is saved. Complete the remaining choice before recurring updates begin."
             : $"Portfolio updates will use {updated.Format.ToLowerInvariant()} on the {updated.Cadence} cadence" +

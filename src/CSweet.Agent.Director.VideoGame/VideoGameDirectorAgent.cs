@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.1.2";
+    public override string Version => "0.1.3";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -189,7 +189,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         {
             var onboardingMessage = await context.Platform.Communication.SendMessageAsync(
                 onboarded.ConversationId,
-                "I’m ready to shape the game concept, platform, technical constraints and budget with you, then submit an official pitch for your approval. Choose how closely you want to collaborate below; you can add starting context or reference files with your answer. I’ll own every unspecified decision, and I won’t submit staffing before this choice is recorded.",
+                "I’m ready to shape the game concept, platform, technical constraints and budget with you, then submit an official pitch for your approval. Choose how closely you want to collaborate below; next we’ll discuss what kind of game you want to make. You can include starting context or reference files now. I’ll recommend unspecified choices, and hiring remains blocked until you approve the official pitch.",
                 $"video-game-creative-onboarding:{message.EventId:N}",
                 cancellationToken);
             _ = await context.Platform.AskUserAsync(new AskUserRequest(
@@ -205,12 +205,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 Phase = GameDirectorPhase.InvolvementConfirmation,
                 IntakeConversationId = onboarded.ConversationId,
                 IntakeChoiceAsked = true,
+                OnboardingFlowVersion = 1,
                 OnboardingEventId = message.EventId,
                 OnboardingCompletedAt = DateTimeOffset.UtcNow
             }, current.Revision, message.EventId, $"onboarding-state:{message.EventId:N}", context, cancellationToken);
         }
 
-        await AskReportingCadenceAsync(onboarded.ConversationId, message.EventId, context, cancellationToken);
         _ = await context.Platform.Lifecycle.CompleteOnboardingAsync(message, cancellationToken);
     }
 
@@ -280,7 +280,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
-
+        await ContinueDirectorOnboardingAsync(context, cancellationToken);
         var reporting = await context.Platform.ReadOperatingStateAsync<ReportingPreferences>(ReportingKey, cancellationToken);
         if (reporting is not null) await EnsureReportingTodoAsync(reporting.Payload, context, cancellationToken);
         await ReportMilestoneChangesAsync(context, cancellationToken);
@@ -831,7 +831,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             _ = await context.Platform.AskUserAsync(new AskUserRequest(
                 conversationId,
                 incoming.TurnId,
-                "What initial game direction should I build on? Include the player fantasy, core loop, platform and non-negotiables, plus any external date constraint and its reason, budget/resource limits and reserved decisions. With no external date, delivery is forecast-driven. Mark standing preferences explicitly for future projects—or ask me to propose starting concepts.",
+                InitialGameDirectionPrompt,
                 [],
                 string.Empty,
                 $"creative-initial-direction:{incoming.MessageId:N}"), cancellationToken);
@@ -2949,6 +2949,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             values.GroupBy(key).Select(x => x.Last()).ToList();
         return desired with
         {
+            OnboardingFlowVersion = Math.Max(latest.OnboardingFlowVersion, desired.OnboardingFlowVersion),
             IntakeId = desired.IntakeId ?? latest.IntakeId,
             IntakeConversationId = desired.IntakeConversationId ?? latest.IntakeConversationId,
             CreativeDirectorEmployeeId = desired.CreativeDirectorEmployeeId ?? latest.CreativeDirectorEmployeeId,
@@ -3132,7 +3133,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             .ToList();
         var approvalPreference = mode switch
         {
-            ManagerInvolvementMode.Delegated => "Video Game Director decides unspecified choices and locks the initial vision.",
+            ManagerInvolvementMode.Delegated => "Video Game Director recommends unspecified choices; the CEO must approve the exact official game pitch before hiring.",
             ManagerInvolvementMode.MilestoneReview => "Manager explicitly accepts, refines, or replaces major creative milestones.",
             ManagerInvolvementMode.Collaborative => "Manager collaborates through iterative pitch revisions before locking the vision.",
             _ => current.ApprovalPreference
