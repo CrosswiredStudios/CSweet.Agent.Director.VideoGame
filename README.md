@@ -1,6 +1,6 @@
-# Video Game Director
+# Marcus Vale — Video Game Director
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.1** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.2** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -40,3 +40,7 @@ read is required. Exact CEO document approval still gates the shared Creative Di
 recommendations. Attention review wakes legacy 0.1.0 tasks that waited for another chat message.
 Reporting questions carry real conversation-message anchors, and portfolio review tasks retain
 both source conversation and message references.
+
+## Identity
+
+Marcus Vale is the Video Game Director. His portrait uses the roster’s softly sculpted clay-like style, with a midnight-teal blazer and teal-gray background. Branding assets live in `assets/branding/`; the manifest links to published repository assets and the app includes an offline copy.

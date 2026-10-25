@@ -66,7 +66,7 @@ public sealed partial class VideoGameDirectorAgent
              new("pause-affected-work", "Keep affected work paused", "Retain this decision dependency while other authorized work continues.")],
             "continue-current-plan", [new("artifact", review.DocumentId, review.RevisionId, review.RevisionSha256,
                 PitchProtocol.DocumentType, "Draft")], null,
-            "Only the affected brief refinement is paused. Naomi owns the decision and relay to Gabriel.", null,
+            "Only the affected brief refinement is paused. Marcus owns the decision and relay to Gabriel.", null,
             $"pitch-owner:{request.SessionId:N}:{review.RevisionSha256}:{priorAnswer:N}",
             JsonSerializer.SerializeToElement(new { pitchRefinement = binding }, PitchProtocol.Json)), token);
         return AgentCoordinationTurnResult.Blocked($"{PitchWaitMarker} {decision.Id:D}. Gabriel, pause refinement and retain this exact draft. I have raised the decision to my manager and will relay the answer before resuming.");
@@ -89,7 +89,7 @@ public sealed partial class VideoGameDirectorAgent
         if (latest.SelectedOptionId == "pause-affected-work") return true;
         if (session.Status == "Blocked" && session.FinalSummary?.StartsWith(PitchWaitMarker, StringComparison.Ordinal) == true)
             await context.Platform.Communication.ResumeCoordinationAsync(session.Id, session.Revision,
-                $"Manager decision {latest.Id:D} is recorded. Naomi must read it and relay its authoritative answer to Gabriel.",
+                $"Manager decision {latest.Id:D} is recorded. Marcus must read it and relay its authoritative answer to Gabriel.",
                 $"pitch-decision-resume:{latest.Id:N}:{latest.Revision}", token);
         return false;
     }

@@ -16,8 +16,8 @@
     ]
   },
   "id": "com.csweet.video-game-director",
-  "name": "Video Game Director",
-  "version": "0.1.1",
+  "name": "Marcus Vale",
+  "version": "0.1.2",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -75,7 +75,7 @@
     },
     {
       "name": "agent.configuration.describe.v1",
-      "description": "Describe Video Game Video Game Director configuration.",
+      "description": "Describe Video Game Director configuration.",
       "inputSchema": {
         "type": "object",
         "additionalProperties": false
@@ -89,7 +89,7 @@
     },
     {
       "name": "agent.configuration.update.v1",
-      "description": "Update Video Game Video Game Director configuration.",
+      "description": "Update Video Game Director configuration.",
       "inputSchema": {
         "type": "object"
       },
@@ -736,7 +736,9 @@
   },
   "ui": [],
   "catalog": {
-    "accentColor": "#773F64",
+    "imageUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.Director.VideoGame/main/assets/branding/portrait-v1.png",
+    "companyLogoUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.Director.VideoGame/main/assets/branding/csweet-icon.svg",
+    "accentColor": "#365F68",
     "summary": "Leads the game portfolio, CEO-approved pitches, shared creative and production leadership, and CEO reporting.",
     "category": "Creative",
     "role": {
