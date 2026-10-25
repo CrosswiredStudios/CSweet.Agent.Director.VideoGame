@@ -58,7 +58,7 @@ public sealed class ProducerDocumentationTests
     }
 
     [Fact]
-    public async Task MissingDocumentCreatesPersonalWorkAndReconstructsSavedScopeForReview()
+    public async Task MissingApprovedPitchNeverReconstructsOrSubmitsReplacement()
     {
         var conversation = Guid.NewGuid(); var director = Guid.NewGuid(); var manager = Guid.NewGuid();
         var state = new GameDirectorOperatingState { IntakeConversationId = conversation,
@@ -103,9 +103,8 @@ public sealed class ProducerDocumentationTests
         await VideoGameDirectorAgent.QueueProducerDocumentationAsync(state, context, default);
         Assert.NotNull(todo); Assert.Contains("documentation", todo.Title);
         var agent = new VideoGameDirectorAgent();
-        await agent.HandlePersonalTodoAsync(todo, context, default);
-        await agent.HandlePersonalTodoAsync(todo, context, default);
-        Assert.Equal(1, creates); Assert.Equal(1, submits);
-        Assert.Null(document!.AcceptedRevisionId);
+        await Assert.ThrowsAsync<PlatformCapabilityException>(() => agent.HandlePersonalTodoAsync(todo, context, default));
+        Assert.Equal(0, creates); Assert.Equal(0, submits);
+        Assert.Null(document);
     }
 }

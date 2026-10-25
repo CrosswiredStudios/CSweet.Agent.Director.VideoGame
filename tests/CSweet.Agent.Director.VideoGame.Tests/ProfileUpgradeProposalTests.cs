@@ -10,7 +10,7 @@ public sealed class ProfileUpgradeProposalTests
     [InlineData(4, false, 1)]
     [InlineData(5, false, 1)]
     [InlineData(6, false, 1)]
-    [InlineData(7, false, 0)]
+    [InlineData(8, false, 0)]
     [InlineData(4, true, 0)]
     public async Task ReconciliationProposesOnceAndSkipsCurrentOrAlreadyBoardedProjects(int version, bool existingBoard, int expected)
     {
@@ -41,7 +41,7 @@ public sealed class ProfileUpgradeProposalTests
         if (expected == 1)
         {
             var request = calls[0]; Assert.Equal(7, request.ExpectedRevision);
-            Assert.Equal(7, request.Changes.GetProperty("profileUpgrade").GetProperty("version").GetInt32());
+            Assert.Equal(8, request.Changes.GetProperty("profileUpgrade").GetProperty("version").GetInt32());
             Assert.Equal(64, request.Changes.GetProperty("profileUpgrade").GetProperty("definitionDigest").GetString()!.Length);
             Assert.Single(stored);
         }

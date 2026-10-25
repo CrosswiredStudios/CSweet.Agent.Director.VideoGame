@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.1.3";
+    public override string Version => "0.2.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -287,6 +287,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         await ReviewPendingStaffingAsync(context, cancellationToken);
         await ReconcilePortfolioAsync(review.ReviewId, context, cancellationToken);
         await EnsurePortfolioAgendaAsync(context, cancellationToken);
+        await RecoverCreativeReviewParentsAsync(context, cancellationToken);
     }
 
     public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(
@@ -432,6 +433,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        if (request.Transcript.Any(x => x.Artifact?.Type == CreativeReviewRequestType))
+            return await ReceiveCreativeReviewAsync(request, context, cancellationToken);
         if (request.Transcript.Any(x => x.Artifact?.Type == CreativeDesignRequestType))
             return await ReviewCreativeDesignAsync(request, context, cancellationToken);
         if (request.Transcript.Any(x => x.Artifact?.Type == "video-game.project-foundation.request.v1"))
@@ -515,6 +518,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         }
 
         var question = request.Transcript.LastOrDefault()?.Content ?? request.Objective;
+        if (IsCreativeQuestion(question) && current.State.CreativeDirectorEmployeeId is not null)
+            return AgentCoordinationTurnResult.Blocked("Creative decisions belong to Naomi. Request her project-scoped creative review; bring scope, resource or business conflicts to the Video Game Director.");
         if (IsCreativeQuestion(question))
         {
             var answer = await GenerateCreativeAnswerAsync(question, current.State, request.SessionId,
@@ -707,6 +712,17 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (inboundDisposition == GameDirectorInboundDisposition.StatusRequest)
         {
             await stream.CommitAsync(CreateChatStatus(state), cancellationToken);
+            return;
+        }
+
+        if (state.CreativeDirectorEmployeeId is { } creative && state.AcceptedVision is not null &&
+            IsCreativeQuestion(currentMessage) && inboundDisposition is GameDirectorInboundDisposition.InformationQuestion or GameDirectorInboundDisposition.DurableAction)
+        {
+            var delegation = await context.Platform.Delegation.DelegateWithTrackingAsync(new(creative,
+                currentMessage, "Resolve the creative request within the approved pitch; report evidence and any scope decision back to the Director.",
+                conversationId, incoming.MessageId, $"director-creative-delegation:{incoming.MessageId:N}",
+                WorkContext: new(state.WorkstreamId, state.TeamId)), cancellationToken);
+            await stream.CommitAsync($"I delegated the creative work to Naomi and will track its outcome. Reference: {delegation.Id:D}. Any change to approved scope or budget comes back to me.", cancellationToken);
             return;
         }
 
@@ -1700,8 +1716,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             var session = await context.Platform.Communication.StartCoordinationAsync(
                 new StartAgentCoordinationRequest(
                     producerEmployeeId,
-                    "Refine the accepted game pitch and production brief",
-                    "Read the accepted pitch, resolve planning questions, and coauthor a sufficient brief for staffing. Missing deadlines never block planning; forecasts follow feasibility and estimates. Marcus owns pausing, escalation and decision relay.",
+                    "Prepare the production brief from the approved pitch and GDD",
+                    "Read the accepted pitch and GDD, resolve delivery questions, and prepare a sufficient production brief for staffing. Missing deadlines never block planning; forecasts follow feasibility and estimates. Marcus owns pausing, escalation and decision relay.",
                     ["The Producer has no remaining planning questions", "The shared production brief is accepted by the Video Game Director", "Return video-game.production.game-vision-acknowledgement.v1 only after convergence"],
                     "Read the linked exact accepted pitch and high-level GDD. Draft the shared production brief, ask me focused questions, and incorporate my answers and edits. Do not propose staffing until you are confident and I accept the exact refined brief.",
                     acceptedVision.ConversationId,
@@ -2247,7 +2263,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 "Give the Producer a project to plan and deliver, connect the approved team and creative brief, and keep creative direction and major decisions under review.",
                 $"video-game-workstream:{projectVision.Digest}",
                 VideoGameProfileKeys.ProductionV2,
-                7,
+                8,
                 JsonSerializer.SerializeToElement(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
                 new WorkstreamAuthorityEnvelope(
                     0.05m, 14,
@@ -2402,6 +2418,22 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     return;
                 }
                 var exact = document.Revisions.Single(x => x.Id == revisionId);
+                // Creative findings are owned by Naomi; the Director reviews only business alignment.
+                // Naomi's authored GDD receives independent Director review rather than self-review.
+                if (document.Id != state.CreativeDesignArtifactId)
+                {
+                    var creative = await EnsureCreativeReviewAsync(state, document, exact, null, context, cancellationToken);
+                    if (creative is null || creative.Disposition != "accepted")
+                    {
+                        allMemberRevisionsAccepted = false;
+                        if (creative is not null && state.ProducerEmployeeId is { } producer)
+                            await context.Platform.Communication.SendDirectMessageAsync(producer,
+                                $"Creative review of {document.Title}: {creative.Summary}\n{string.Join("\n", creative.RequiredChanges)}",
+                                $"package-creative-findings:{exact.Id:N}:{exact.ContentSha256}",
+                                ProjectWorkContext(state, context, document.Id), cancellationToken);
+                        return;
+                    }
+                }
                 var review = await ReviewDetailedArtifactAsync(
                     document, exact, member.RequiredDocumentType, state, context, cancellationToken);
                 var findings = review.Findings.Select(x => new ReviewFinding(
@@ -2433,7 +2465,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 $"Approved detailed game-design package `{package.Id:D}` version {package.Version} is development-ready. Exact members: {members}. Bind its exact accepted revisions as artifact-package evidence before production execution.",
                 $"creative-package-approved:{package.Id:N}:{package.Version}",
                 ProjectWorkContext(state, context, package.Id), cancellationToken);
-        else if (!approved && Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId))
+        else if (!approved && allMemberRevisionsAccepted && Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId))
             await context.Platform.Communication.SendDirectMessageAsync(managerId,
                 $"Detailed game-design package `{package.Id:D}` is ready for your milestone approval. Exact members: {members}. Open /organizations/{context.BusinessId}/documents?packageId={package.Id:D} to review it.",
                 $"creative-package-manager-review:{package.Id:N}:{package.Version}",
@@ -2484,7 +2516,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             new AgentLlmInvocationContext(InvocationKind: "creative-artifact-review")));
         var response = await context.Platform.Calendar.GetResponseAsync(client, [
             new ChatMessage(ChatRole.System,
-                "You are the accountable video-game Video Game Director reviewing an exact document revision. Return only JSON with keys disposition, summary, and findings. disposition must be accepted, accepted-with-findings, changes-required, or rejected. Each finding must have code, section, severity (Info, Minor, Major, Critical), blocking, summary, and requiredFollowUp. Judge substantive coherence with the accepted vision, production usefulness, concrete decisions, cross-discipline dependencies, risks, ownership, testability, accessibility, and internal consistency. Never accept placeholders or generic boilerplate."),
+                "You are the Video Game Director checking an exact baseline document against the CEO-approved scope and constraints. Do not replace specialist creative, technical or QA judgment. Return only JSON with keys disposition, summary, and findings. disposition must be accepted, accepted-with-findings, changes-required, or rejected. Each finding must have code, section, severity (Info, Minor, Major, Critical), blocking, summary, and requiredFollowUp. Judge alignment with the approved scope, platforms, budget, non-goals and success criteria. Verify accountable owners and explicitly recorded dependencies. Creative quality, architecture, implementation correctness and QA certification remain with their respective reviewers. Never accept placeholders or generic boilerplate."),
             new ChatMessage(ChatRole.User,
                 $"Required document type: {requiredDocumentType}\nActual type: {document.DocumentType}\nExact SHA-256: {revision.ContentSha256}\n\nAccepted vision:\n{state.AcceptedVision?.Markdown}\n\nSubmitted document:\n{revision.Content}")
         ], cancellationToken: cancellationToken);

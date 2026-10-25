@@ -63,9 +63,9 @@ public sealed class ManifestTests
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Defer);
         Assert.Contains(WorkstreamEventNames.ArtifactPackageSubmittedV1, manifest.Events.Subscribes);
         Assert.Contains(WorkstreamEventNames.ArtifactPackageDecidedV1, manifest.Events.Subscribes);
-        var profile = Assert.Single(manifest.WorkstreamProfiles.Provides, x => x.Version == 7);
+        var profile = Assert.Single(manifest.WorkstreamProfiles.Provides, x => x.Version == 8);
         Assert.Equal("video-game-production.v2", profile.Key);
-        Assert.Equal(7, profile.Version);
+        Assert.Equal(8, profile.Version);
         Assert.True(File.Exists(Path.Combine(root,
             profile.DefinitionResource.Replace('/', Path.DirectorySeparatorChar))));
         Assert.Empty(manifest.Credentials);
@@ -79,7 +79,7 @@ public sealed class ManifestTests
     public async Task ProductionProfileOwnsLifecycleBoardTypesGatesAndStaffingDeclaratively()
     {
         using var profile = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(
-            Path.Combine(RepositoryRoot(), "profiles", "video-game-production.v2.7.json")));
+            Path.Combine(RepositoryRoot(), "profiles", "video-game-production.v2.8.json")));
         var root = profile.RootElement;
 
         Assert.Equal("video-game-production.v2", root.GetProperty("key").GetString());
@@ -117,7 +117,7 @@ public sealed class ManifestTests
     public async Task CodeDeliveryRequiresReviewQualityAndGovernedMergeBeforeAcceptance()
     {
         using var profile = System.Text.Json.JsonDocument.Parse(await File.ReadAllTextAsync(
-            Path.Combine(RepositoryRoot(), "profiles", "video-game-production.v2.7.json")));
+            Path.Combine(RepositoryRoot(), "profiles", "video-game-production.v2.8.json")));
         var orchestration = profile.RootElement.GetProperty("orchestration");
         var transitions = orchestration.GetProperty("transitions").EnumerateArray().ToArray();
         string Next(string stage, string outcome) => Assert.Single(transitions, t =>

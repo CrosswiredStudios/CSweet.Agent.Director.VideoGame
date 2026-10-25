@@ -17,7 +17,7 @@ public sealed class PitchRefinementTests
         var producer = Guid.NewGuid(); var director = Guid.NewGuid(); var workstream = Guid.NewGuid(); var team = Guid.NewGuid();
         var session = Guid.NewGuid(); var document = Guid.NewGuid(); var revision = Guid.NewGuid(); var decisions = 0;
         var markdown = string.Join("\n", new[] { "Scope", "Player experience", "Non-goals", "Acceptance criteria", "Deliverables", "Constraints", "Risks", "Open questions" }.Select(x => $"## {x}\nDetail."));
-        var state = new GameDirectorOperatingState { WorkstreamId = workstream, TeamId = team, ProducerEmployeeId = producer,
+        var state = new GameDirectorOperatingState { WorkstreamId = workstream, TeamId = team, ProducerEmployeeId = producer, CreativeDirectorEmployeeId = Guid.NewGuid(),
             AcceptedVision = new(1, "pitch", "Accepted arcade pitch", Guid.NewGuid(), Guid.NewGuid(), "pitch-sha", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow) };
         var modelCalls = 0;
         var runtime = new AgentTestRuntime()
@@ -27,8 +27,8 @@ public sealed class PitchRefinementTests
                 new ArtifactDocument(document, "Planning", PitchProtocol.DocumentType, "InReview", revision, revision, null, null, null,
                     [new(revision, 1, null, markdown, "draft-hash", "Submitted", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null)]) { WorkstreamId = workstream, TeamId = team }))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
-                (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(cached ? new(Guid.NewGuid(), request.StateKey, "test", 1, "Active",
-                    new Dictionary<string, string>(), [], "cached", [], Guid.NewGuid(), JsonSerializer.SerializeToElement(new DirectorReview(directorAccepts, "Answers and scope assessment", markdown)), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) : null)))
+                (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(cached || request.StateKey.StartsWith("director-creative-review:") ? new(Guid.NewGuid(), request.StateKey, "test", 1, "Active",
+                    new Dictionary<string, string>(), [], "cached", [], Guid.NewGuid(), request.StateKey.StartsWith("director-creative-review:") ? CreativeReviewFixture.Accepted(state, document, revision, "draft-hash") : JsonSerializer.SerializeToElement(new DirectorReview(directorAccepts, "Answers and scope assessment", markdown)), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) : null)))
             .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
                 (request, _) => Task.FromResult(new AgentOperatingStateResponse(Guid.NewGuid(), request.StateKey, "test", 1, "Active",
                     new Dictionary<string, string>(), [], "review", [], Guid.NewGuid(), request.Payload, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)))

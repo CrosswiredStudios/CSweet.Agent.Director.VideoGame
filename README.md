@@ -1,6 +1,11 @@
-# Marcus Vale — Video Game Director
+# Video Game Director 0.2.0
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.3** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+Route post-pitch creative work through SDK tracked delegation. Require exact Naomi creative review before production-brief approval, resume durable coordination after review, and publish production profile 8 with Creative Director task eligibility. Retain exact CEO pitch approval before leadership hiring.
+
+CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
+
+
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.2.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
