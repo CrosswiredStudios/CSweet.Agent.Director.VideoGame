@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Version>0.1.0</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CSweet.WorkManagement.Contracts" Version="5.1.0" Condition="'$(UseLocalCSweetWorkManagementContracts)' != 'true'" />
+    <PackageReference Include="CSweet.Agent.SDK" Version="5.3.1" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
+    <PackageReference Include="CSweet.Memory" Version="0.5.0" Condition="'$(UseLocalCSweetMemory)' != 'true'" />
+    <PackageReference Include="CSweet.Memory.Broker" Version="0.5.0" Condition="'$(UseLocalCSweetMemory)' != 'true'" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="CSweet.Agent.Director.VideoGame.Tests" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalCSweetWorkManagementContracts)' == 'true'">
+    <ProjectReference Include="$(CSweetWorkManagementContractsRepositoryRoot)\src\CSweet.WorkManagement.Contracts\CSweet.WorkManagement.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalCSweetAgentSdk)' == 'true'">
+    <ProjectReference Include="$(CSweetAgentSdkRepositoryRoot)\src\CSweet.Agent.SDK\CSweet.Agent.SDK.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalCSweetMemory)' == 'true'">
+    <ProjectReference Include="$(CSweetMemoryRepositoryRoot)\src\CSweet.Memory\CSweet.Memory.csproj" />
+    <ProjectReference Include="$(CSweetMemoryRepositoryRoot)\src\CSweet.Memory.Broker\CSweet.Memory.Broker.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <Content Include="..\..\csweet-plugin.json" Link="csweet-plugin.json" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="content\" />
+    <Content Include="..\..\profiles\video-game-production.v2.7.json" Link="profiles\video-game-production.v2.7.json" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="content\profiles\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../extensions/video-game/*.cs" Link="Extension/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="VerifyPublishedAgentIdentity" AfterTargets="Publish">
+    <Exec Command="&quot;$(DOTNET_HOST_PATH)&quot; &quot;$(TargetFileName)&quot; --self-test" WorkingDirectory="$(PublishDir)" />
+  </Target>
+</Project>

@@ -1,0 +1,14 @@
+{
+  "extensionId": "com.crosswiredstudios.video-game",
+  "version": "1.2.0",
+  "sourceRepository": "https://github.com/CrosswiredStudios/CSweet.Agent.Director.VideoGame",
+  "sourcePath": "extensions/video-game",
+  "files": {
+    "VideoGameContracts.cs": "3109b05733f25b09f067d0d64358bc74dc2cdbd1078829bc6c51d6537ce9982a",
+    "VideoGameAgentKit.cs": "85bcb3ec6af6cf0450ac3505117109e07c0b1bf7b659c03ea1388c1d67d708a5",
+    "README.md": "a4f3bb6ab25fbf925a808c71ba1eb4c2895c55bf1aad6c806932a123be1e6bc2"
+  },
+  "localAdaptations": [
+    "Adds the game-director leadership role while preserving the creative-director peer role."
+  ]
+}

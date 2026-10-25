@@ -1,0 +1,762 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CrosswiredStudios/CSweetAgentSdk/main/schemas/csweet-plugin.v2.schema.json",
+  "manifestVersion": "2.0",
+  "kind": "agent",
+  "rolePolicy": {
+    "baseType": "manager",
+    "profile": "manager.v1",
+    "declaredRoleKeys": [
+      "manager",
+      "game-director"
+    ],
+    "specializationKeys": [
+      "video-game-development",
+      "game-direction",
+      "portfolio-management"
+    ]
+  },
+  "id": "com.csweet.video-game-director",
+  "name": "Video Game Director",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "com.csweet",
+    "name": "C-Sweet"
+  },
+  "runtime": {
+    "type": "dotnet-project",
+    "projectPath": "src/CSweet.Agent.Director.VideoGame/CSweet.Agent.Director.VideoGame.csproj",
+    "targetFramework": "net10.0",
+    "defaultActivationMode": "OnDemand",
+    "defaultTickFrequencySeconds": 300,
+    "supportsMultipleInstallations": true,
+    "maximumConcurrentJobs": 1
+  },
+  "protocol": {
+    "minimumVersion": "2.0",
+    "maximumVersion": "2.x"
+  },
+  "workstreamProfiles": {
+    "provides": [
+      {
+        "key": "video-game-production.v2",
+        "version": 7,
+        "definitionResource": "profiles/video-game-production.v2.7.json"
+      }
+    ],
+    "requires": []
+  },
+  "provides": [
+    {
+      "name": "game-direction.game-vision.v1",
+      "description": "Read the durable video-game creative-direction lifecycle and accepted vision status.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "none",
+      "riskClass": "standard"
+    },
+    {
+      "name": "management.check-in.v1",
+      "description": "Return a management status report for video-game creative direction.",
+      "inputSchema": {
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "work-item",
+      "riskClass": "standard"
+    },
+    {
+      "name": "agent.configuration.describe.v1",
+      "description": "Describe Video Game Video Game Director configuration.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "none",
+      "riskClass": "standard"
+    },
+    {
+      "name": "agent.configuration.update.v1",
+      "description": "Update Video Game Video Game Director configuration.",
+      "inputSchema": {
+        "type": "object"
+      },
+      "outputSchema": {
+        "type": "object"
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "work-item",
+      "riskClass": "standard"
+    }
+  ],
+  "requires": [
+    {
+      "name": "platform.project-health.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect and assess incidents within current project and reporting authority."
+    },
+    {
+      "name": "platform.project-health.diagnostics.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect and assess incidents within current project and reporting authority."
+    },
+    {
+      "name": "platform.management.incident.report.v1",
+      "scope": "organization",
+      "purpose": "Inspect and assess incidents within current project and reporting authority."
+    },
+    {
+      "name": "work.calendar.read.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.create.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.update.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.cancel.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.schedule.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "platform.llm.chat-stream.v1",
+      "scope": "organization",
+      "purpose": "Generate and refine grounded video-game pitches and answer creative questions."
+    },
+    {
+      "name": "platform.user-input.request.v1",
+      "scope": "organization",
+      "purpose": "Request one bounded intake, pitch, or creative decision from the authoritative manager."
+    },
+    {
+      "name": "platform.business-profile.read.v1",
+      "scope": "organization",
+      "purpose": "Ground creative direction in the authoritative business profile."
+    },
+    {
+      "name": "platform.finance-profile.read.v1",
+      "scope": "organization",
+      "purpose": "Ground creative scope and staffing in authoritative financial constraints."
+    },
+    {
+      "name": "platform.organization.snapshot.read.v1",
+      "scope": "organization",
+      "purpose": "Ground creative and product leadership in current organization and workstream ownership."
+    },
+    {
+      "name": "platform.workstream.read.v1",
+      "scope": "organization",
+      "purpose": "Read exact profile-bound project state and revisions."
+    },
+    {
+      "name": "platform.workstream.plan.propose.v2",
+      "scope": "organization",
+      "purpose": "Propose a game Workstream with accountable Producer, authority envelope, milestones, and gates."
+    },
+    {
+      "name": "platform.workstream.change.propose.v1",
+      "scope": "organization",
+      "purpose": "Propose revision-bound lifecycle, scope, budget, schedule, or metadata changes."
+    },
+    {
+      "name": "platform.workstream.gate.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect profile-defined game lifecycle gates and exact evidence."
+    },
+    {
+      "name": "platform.workstream.gate.submit.v1",
+      "scope": "organization",
+      "purpose": "Submit profile-required creative, technical, QA, accessibility, build, and evaluation evidence."
+    },
+    {
+      "name": "platform.workstream.gate.decide.v1",
+      "scope": "organization",
+      "purpose": "Decide routine gates within the project authority envelope using structured findings."
+    },
+    {
+      "name": "platform.management.portfolio.read.v1",
+      "scope": "organization",
+      "purpose": "Supervise multiple concurrent game Workstreams without joining their delivery teams."
+    },
+    {
+      "name": "platform.team-roster.read.v2",
+      "scope": "organization",
+      "purpose": "Inspect each supervised project team's distinct installed specialists."
+    },
+    {
+      "name": "platform.decision.request.v1",
+      "scope": "organization",
+      "purpose": "Create one durable correlated escalation for each material project decision."
+    },
+    {
+      "name": "platform.decision.read.v1",
+      "scope": "organization",
+      "purpose": "Reconcile durable project decisions without phrase matching."
+    },
+    {
+      "name": "platform.decision.decide.v1",
+      "scope": "organization",
+      "purpose": "Make routine decisions explicitly authorized by the project authority envelope."
+    },
+    {
+      "name": "platform.memory.query.v1",
+      "scope": "organization",
+      "purpose": "Recall authorized employee, manager-relationship, and shared business memory under current server policy."
+    },
+    {
+      "name": "platform.memory.write.v1",
+      "scope": "organization",
+      "purpose": "Propose explicit manager preferences and project decisions, and record supplied memory usage; server policy controls attribution and sensitivity."
+    },
+    {
+      "name": "agent.onboarding.complete.v1",
+      "scope": "organization",
+      "purpose": "Durably complete the proactive manager-involvement onboarding event."
+    },
+    {
+      "name": "communication.chat.read.v1",
+      "scope": "team",
+      "purpose": "Read authorized manager and reporting-tree conversations including sanitized attachment references."
+    },
+    {
+      "name": "communication.chat.create.v1",
+      "scope": "team",
+      "purpose": "Open or reuse contextual direct conversations with the authoritative manager, Producer, and accountable specialists."
+    },
+    {
+      "name": "platform.user-action.suggest.v1",
+      "scope": "organization",
+      "purpose": "Attach a platform-resolved project approval card in the private conversation with the approver."
+    },
+    {
+      "name": "communication.message.send.v1",
+      "scope": "team",
+      "purpose": "Send milestone, blocker, escalation, relay, and handoff messages."
+    },
+    {
+      "name": "communication.coordination.start.v1",
+      "scope": "team",
+      "purpose": "Start authenticated exact-digest vision and Technical Director feasibility handoffs."
+    },
+    {
+      "name": "communication.coordination.respond.v1",
+      "scope": "team",
+      "purpose": "Answer reporting-tree creative questions and complete typed project coordination."
+    },
+    {
+      "name": "communication.coordination.read.v1",
+      "scope": "team",
+      "purpose": "Recover durable Producer and specialist coordination sessions."
+    },
+    {
+      "name": "communication.coordination.resume.v1",
+      "scope": "team",
+      "purpose": "Resume this manager's paused brief collaboration after reading an authoritative decision and relay its answer to the Producer."
+    },
+    {
+      "name": "communication.coordination.list.v1",
+      "scope": "team",
+      "purpose": "Reconcile the Video Game Director's own handoff and clarification sessions."
+    },
+    {
+      "name": "platform.management.resource-change.propose.v1",
+      "scope": "organization",
+      "purpose": "Submit the Producer bootstrap staffing plan for governed approval."
+    },
+    {
+      "name": "platform.management.resource-change.read.v1",
+      "scope": "organization",
+      "purpose": "Wait for and reconcile the dedicated project-team staffing decision."
+    },
+    {
+      "name": "platform.management.resource-change.decide.v1",
+      "scope": "team",
+      "purpose": "Approve, request revision, or reject direct-report Producer capacity proposals after current evidence and profile validation."
+    },
+    {
+      "name": "work.flow-metrics.read.v1",
+      "scope": "team",
+      "purpose": "Revalidate Producer capacity evidence against current trusted metrics."
+    },
+    {
+      "name": "platform.management.staffing-replenishment.propose.v1",
+      "scope": "team",
+      "purpose": "Request governed replenishment for any missing distinct required specialist."
+    },
+    {
+      "name": "platform.management.staffing-replenishment.read.v1",
+      "scope": "team",
+      "purpose": "Reconcile project-team specialist replenishment decisions."
+    },
+    {
+      "name": "platform.agent-operating-state.read.v1",
+      "scope": "organization",
+      "purpose": "Recover the durable revision-safe creative lifecycle."
+    },
+    {
+      "name": "platform.agent-operating-state.write.v1",
+      "scope": "organization",
+      "purpose": "Persist proposals, accepted vision, staffing, handoff, reports, escalations, and notification fingerprints."
+    },
+    {
+      "name": "platform.artifact.create.v1",
+      "scope": "organization",
+      "purpose": "Create the authoritative high-level GDD and Video Game Director-owned detailed design documents."
+    },
+    {
+      "name": "platform.artifact.read.v1",
+      "scope": "organization",
+      "purpose": "Read only exact game-design documents granted to this installation."
+    },
+    {
+      "name": "platform.artifact.revise.v1",
+      "scope": "organization",
+      "purpose": "Create immutable revisions of exact granted game-design documents."
+    },
+    {
+      "name": "platform.artifact.submit.v1",
+      "scope": "organization",
+      "purpose": "Submit exact game-design revisions for durable review."
+    },
+    {
+      "name": "platform.artifact.decide.v1",
+      "scope": "organization",
+      "purpose": "Decide exact granted revisions under confirmed creative authority or record human chat evidence."
+    },
+    {
+      "name": "platform.artifact.decide.v2",
+      "scope": "organization",
+      "purpose": "Review exact document revisions and hashes against game rubrics with section findings and blocking severity."
+    },
+    {
+      "name": "platform.artifact.request-access.v1",
+      "scope": "organization",
+      "purpose": "Request human approval for cross-agent access to explicitly listed documents."
+    },
+    {
+      "name": "platform.artifact-package.read.v1",
+      "scope": "organization",
+      "purpose": "Review only a package whose member documents are individually granted."
+    },
+    {
+      "name": "platform.artifact-package.decide.v1",
+      "scope": "organization",
+      "purpose": "Accept a complete detailed design package when exact-file decision grants exist."
+    },
+    {
+      "name": "work.personal-todo.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect this installation's own durable Video Game Director agenda and correlate waiting work."
+    },
+    {
+      "name": "work.personal-todo.add.v1",
+      "scope": "organization",
+      "purpose": "Track the high-level GDD, governed staffing-plan submission, and authenticated chat-created creative obligations as durable personal work."
+    },
+    {
+      "name": "work.personal-todo.requeue.v1",
+      "scope": "organization",
+      "purpose": "Resume this installation's waiting or blocked agenda card when its exact chat or decision dependency changes."
+    },
+    {
+      "name": "work.personal-todo.claim.v1",
+      "scope": "organization",
+      "purpose": "Allow the SDK to atomically claim this installation's next Ready Video Game Director agenda card."
+    },
+    {
+      "name": "work.personal-todo.complete.v1",
+      "scope": "organization",
+      "purpose": "Allow the SDK to complete this installation's agenda card only after its external effects succeed."
+    },
+    {
+      "name": "work.personal-todo.block.v1",
+      "scope": "organization",
+      "purpose": "Allow the SDK to record an actionable blocker for unsupported or unauthorized Video Game Director work."
+    },
+    {
+      "name": "work.personal-todo.release.v1",
+      "scope": "organization",
+      "purpose": "Allow the SDK to release transient claims while preserving resumable Video Game Director work."
+    },
+    {
+      "name": "work.personal-todo.defer.v1",
+      "scope": "organization",
+      "purpose": "Allow the SDK to persist a bounded future review time and dependency reason for waiting Video Game Director work."
+    },
+    {
+      "name": "work.board.read",
+      "scope": "team",
+      "purpose": "Inspect project-scoped boards and all accountable work."
+    },
+    {
+      "name": "work.item.read",
+      "scope": "team",
+      "purpose": "Inspect exact project tasks, assignments, blockers, and evidence links."
+    },
+    {
+      "name": "work.item.create",
+      "scope": "organization",
+      "purpose": "Delegate profile-typed milestones, features, content, tasks, bugs, spikes, and reviews."
+    },
+    {
+      "name": "work.item.comment",
+      "scope": "organization",
+      "purpose": "Leave auditable creative direction and review feedback on exact work items."
+    },
+    {
+      "name": "work.item.comment.update.v1",
+      "scope": "organization",
+      "purpose": "Correct this agent's own creative-direction comment on an exact work item."
+    },
+    {
+      "name": "work.item.comment.delete.v1",
+      "scope": "organization",
+      "purpose": "Retract this agent's own creative-direction comment while its activity history is retained."
+    },
+    {
+      "name": "work.orchestration.read",
+      "scope": "team",
+      "purpose": "Verify completed independent QA and exact integrated candidate evidence before resolving project planning decisions."
+    },
+    {
+      "name": "work.sprint.read",
+      "scope": "organization",
+      "purpose": "Inspect team plans and delivery cadence."
+    },
+    {
+      "name": "platform.toolchain.catalog.read.v2",
+      "scope": "organization",
+      "purpose": "Select only exact automation-certified recipes and provider installations compatible with targets."
+    },
+    {
+      "name": "platform.build.request.v2",
+      "scope": "organization",
+      "purpose": "Request reproducible builds from exact source revisions and immutable adapter definitions."
+    },
+    {
+      "name": "platform.build.read.v2",
+      "scope": "organization",
+      "purpose": "Inspect actual runnable build status, leases, outputs, and provenance."
+    },
+    {
+      "name": "platform.validation.read.v2",
+      "scope": "organization",
+      "purpose": "Inspect technical, QA, accessibility, performance, and certification validation evidence."
+    },
+    {
+      "name": "platform.preview.create.v2",
+      "scope": "organization",
+      "purpose": "Create mode-specific bounded previews of successful exact builds."
+    },
+    {
+      "name": "platform.preview.read.v2",
+      "scope": "organization",
+      "purpose": "Review project previews and captured audiovisual, log, and telemetry evidence."
+    },
+    {
+      "name": "platform.media-provider.catalog.read.v1",
+      "scope": "organization",
+      "purpose": "Discover eligible project media providers for an approved asset strategy."
+    },
+    {
+      "name": "platform.media-job.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect project media work and exact provenance without provider credentials."
+    },
+    {
+      "name": "platform.media-asset.reference.v1",
+      "scope": "organization",
+      "purpose": "Create opaque multimodal references to authorized project and build evidence."
+    },
+    {
+      "name": "platform.evaluation-session.plan.v1",
+      "scope": "organization",
+      "purpose": "Plan consent-governed playtests and experience evaluations."
+    },
+    {
+      "name": "platform.evaluation-session.read.v1",
+      "scope": "organization",
+      "purpose": "Read playtest reports, evidence, and provenance."
+    },
+    {
+      "name": "platform.evaluation-session.report.v1",
+      "scope": "organization",
+      "purpose": "Record structured player-evaluation reports and follow-up evidence."
+    },
+    {
+      "name": "platform.release-readiness.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect profile-specific launch evidence and blocking findings."
+    },
+    {
+      "name": "platform.release-readiness.submit.v1",
+      "scope": "organization",
+      "purpose": "Submit game launch-readiness evidence without publishing."
+    },
+    {
+      "name": "platform.publication.propose.v1",
+      "scope": "organization",
+      "purpose": "Propose an approved release-provider publication while final public mutation remains human-gated."
+    },
+    {
+      "name": "platform.management.status-report.v1",
+      "scope": "organization",
+      "purpose": "Deliver attributed daily reports to the authoritative manager."
+    },
+    {
+      "name": "platform.management.incident.read.v1",
+      "scope": "organization",
+      "purpose": "Inspect assigned project incidents and escalate through the authorized reporting hierarchy."
+    },
+    {
+      "name": "platform.management.incident.forward.v1",
+      "scope": "organization",
+      "purpose": "Inspect assigned project incidents and escalate through the authorized reporting hierarchy."
+    },
+    {
+      "name": "platform.project-approval.read.v1",
+      "scope": "organization",
+      "purpose": "Read current assigned or submitted project proposals, review outcomes and spending authority."
+    },
+    {
+      "name": "platform.project-approval.decide.v1",
+      "scope": "organization",
+      "purpose": "Review subordinate project proposals; approve, request revision, reject or escalate to the reporting manager."
+    },
+    {
+      "name": "work.delegation.create.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.delegation.read.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.delegation.respond.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.delegation.publish.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.delegation.cancel.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.follow.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.unfollow.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.read.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.progress.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.pending.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.tracking.processed.v1",
+      "scope": "organization",
+      "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.management.incident.presentation.update.v1",
+      "scope": "organization",
+      "purpose": "Persist a grounded manager report and recovery outcome within current incident reporting authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.management.incident.resolution.read.v1",
+      "scope": "organization",
+      "purpose": "Read the authenticated human recovery choice bound to this manager and its durable conversation turn.",
+      "modelVisible": false
+    }
+  ],
+  "events": {
+    "subscribes": [
+      "com.csweet.calendar.reminder-due.v1",
+      "com.csweet.user.message.received.v1",
+      "com.csweet.agent.onboarded.v1",
+      "com.csweet.agent.coordination.turn-requested.v1",
+      "com.csweet.agent.attention.review-due.v1",
+      "com.csweet.work.personal-todo.available.v1",
+      "com.csweet.management.review.due.v1",
+      "com.csweet.management.status.reported.v1",
+      "com.csweet.management.resource-change.decided.v1",
+      "com.csweet.management.resource-change.requested.v1",
+      "com.csweet.management.staffing-replenishment.decided.v1",
+      "com.csweet.workforce.changed.v1",
+      "com.csweet.hiring-recommendation.fulfilled.v1",
+      "com.csweet.artifact.access-decision.v1",
+      "com.csweet.workstream.changed.v2",
+      "com.csweet.workstream.team-assignment.changed.v1",
+      "com.csweet.workstream.supervision.changed.v1",
+      "com.csweet.workstream.authority-envelope.changed.v1",
+      "com.csweet.workstream.gate.requested.v1",
+      "com.csweet.workstream.gate.decided.v1",
+      "com.csweet.decision.requested.v1",
+      "com.csweet.decision.decided.v1",
+      "com.csweet.artifact.revision.submitted.v1",
+      "com.csweet.artifact.revision.decided.v1",
+      "com.csweet.artifact.package.submitted.v1",
+      "com.csweet.artifact.package.decided.v1",
+      "com.csweet.work.item.changed.v1",
+      "com.csweet.work.sprint.changed.v1",
+      "com.csweet.work.execution.changed.v1",
+      "com.csweet.build.published.v1",
+      "com.csweet.validation.completed.v1",
+      "com.csweet.evaluation-session.completed.v1",
+      "com.csweet.media-job.completed.v1",
+      "com.csweet.release-readiness.changed.v1",
+      "com.csweet.project-health.review-due.v1",
+      "com.csweet.management.incident.changed.v1",
+      "com.csweet.project-approval.requested.v1",
+      "com.csweet.project-approval.decided.v1",
+      "com.csweet.work.delegation.received.v1",
+      "com.csweet.work.tracking.changed.v1",
+      "com.csweet.management.incident.owner-report-requested.v1"
+    ]
+  },
+  "configuration": [
+    {
+      "key": "llmProviderId",
+      "type": "provider",
+      "label": "LLM provider",
+      "required": true,
+      "secret": false,
+      "description": "Brokered model provider for creative work."
+    },
+    {
+      "key": "llmModel",
+      "type": "model",
+      "label": "Model",
+      "required": true,
+      "secret": false,
+      "description": "A multimodal-capable model is recommended.",
+      "dependsOnFieldKey": "llmProviderId"
+    },
+    {
+      "key": "maxContextWindowTokens",
+      "type": "number",
+      "label": "Maximum context-window tokens",
+      "required": true,
+      "secret": false,
+      "description": "Planning ceiling for high-level game vision generation; set this no higher than the selected model's real context window.",
+      "minimum": 32769,
+      "step": 1000,
+      "defaultValue": 256000
+    },
+    {
+      "key": "maxOutputTokens",
+      "type": "number",
+      "label": "Maximum pitch output tokens",
+      "required": true,
+      "secret": false,
+      "description": "Budget for one high-level game vision response, including model reasoning. Set this within the selected model and provider's supported limits.",
+      "minimum": 2048,
+      "step": 1000,
+      "defaultValue": 128000,
+      "lessThanFieldKey": "maxContextWindowTokens"
+    },
+    {
+      "key": "maximumProjectBudget",
+      "label": "Delegated project budget limit",
+      "type": "number",
+      "required": false,
+      "defaultValue": 0,
+      "minimum": 0,
+      "description": "Zero means unlimited while real-money spending is unavailable. Positive limits require a matching project currency and amount."
+    },
+    {
+      "key": "projectBudgetCurrency",
+      "label": "Project budget currency",
+      "type": "text",
+      "required": false,
+      "defaultValue": "USD"
+    }
+  ],
+  "credentials": [],
+  "webAccess": {
+    "mode": "None",
+    "rules": []
+  },
+  "ui": [],
+  "catalog": {
+    "accentColor": "#773F64",
+    "summary": "Leads the game portfolio, CEO-approved pitches, shared creative and production leadership, and CEO reporting.",
+    "category": "Creative",
+    "role": {
+      "key": "game-director",
+      "name": "Video Game Director"
+    },
+    "license": {
+      "spdxId": "MIT"
+    },
+    "iconUrls": [],
+    "roleAliases": [
+      "Game Director",
+      "Video Game Director"
+    ],
+    "keywords": [
+      "video games",
+      "game design",
+      "creative direction",
+      "game vision"
+    ],
+    "documentationUrl": "README.md"
+  }
+}

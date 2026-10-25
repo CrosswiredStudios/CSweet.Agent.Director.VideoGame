@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Extension digests must be stable across Windows and Linux checkouts.
+extensions/video-game/* text eol=lf
