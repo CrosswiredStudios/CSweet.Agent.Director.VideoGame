@@ -106,8 +106,11 @@ public sealed class GameDirectorOnboardingTests
                 CommunicationCapabilities.MessageSend,
                 (request, _) =>
                 {
-                    messages++;
-                    onboardingMessage = request.GetProperty("content").GetString();
+                    if (request.GetProperty("content").GetString()!.Contains("Choose how closely"))
+                    {
+                        messages++;
+                        onboardingMessage = request.GetProperty("content").GetString();
+                    }
                     return Task.FromResult(new CommunicationMessage(
                         onboardingMessageId, messages, request.GetProperty("chatId").GetGuid(), employeeId,
                         "Video Game Director", "Agent", request.GetProperty("content").GetString()!,
@@ -117,7 +120,8 @@ public sealed class GameDirectorOnboardingTests
                 PlatformCapabilities.UserInputRequest,
                 (request, _) =>
                 {
-                    if (request.ConversationMessageId.HasValue) onboardingQuestion = request;
+                    Assert.NotEqual(request.ChatTurnId.HasValue, request.ConversationMessageId.HasValue);
+                    if (request.Prompt == "How involved do you want to be in creative direction?") onboardingQuestion = request;
                     return Task.FromResult(new UserQuestionResponse(
                         Guid.NewGuid(), request.Prompt, "Pending",
                         request.Options.Select(option => new UserQuestionOptionResponse(

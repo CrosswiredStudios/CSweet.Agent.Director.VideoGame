@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.1.0";
+    public override string Version => "0.1.1";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -189,7 +189,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         {
             var onboardingMessage = await context.Platform.Communication.SendMessageAsync(
                 onboarded.ConversationId,
-                "I’m ready to lead the game’s creative vision and initial product-team design. Choose how closely you want to collaborate below; you can add starting context or reference files with your answer. I’ll own every unspecified decision, and I won’t submit staffing before this choice is recorded.",
+                "I’m ready to shape the game concept, platform, technical constraints and budget with you, then submit an official pitch for your approval. Choose how closely you want to collaborate below; you can add starting context or reference files with your answer. I’ll own every unspecified decision, and I won’t submit staffing before this choice is recorded.",
                 $"video-game-creative-onboarding:{message.EventId:N}",
                 cancellationToken);
             _ = await context.Platform.AskUserAsync(new AskUserRequest(
@@ -303,23 +303,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (item.CorrelationId?.StartsWith(ProductionCommitmentPrefix, StringComparison.Ordinal) == true)
             return await HandleProductionCommitmentAsync(item, context, cancellationToken);
         if (GameDirectorAgenda.IsVision(item))
-        {
-            var current = await ReadStateForTodoAsync(item, context, cancellationToken);
-            if (current.State.AcceptedVision is { } accepted)
-                return PersonalTodoResult.Completed(
-                    $"Accepted high-level GDD revision {accepted.ArtifactRevisionId:D} ({accepted.ArtifactRevisionHash}).");
-
-            var waitingOn = Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId)
-                ? managerId
-                : (Guid?)null;
-            var reason = current.State.HighLevelArtifactId.HasValue
-                ? "Waiting for the authoritative manager to decide the exact high-level GDD revision."
-                : current.State.DiscoveryInputs.Count == 0
-                    ? "Waiting for initial game direction or authorization to originate concepts."
-                    : "The game direction is durable; waiting for the next chat turn to produce or retry the high-level GDD.";
-            return PersonalTodoResult.WaitingUntil(
-                DateTimeOffset.UtcNow.AddHours(4), reason, waitingOn);
-        }
+            return await ContinuePitchTaskAsync(item, context, cancellationToken);
 
         if (GameDirectorAgenda.IsStaffing(item))
         {
@@ -901,7 +885,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             _ = await EnsureStaffingTodoAsync(
                 Guid.NewGuid(), saved.State, saved.Revision, context, cancellationToken);
             await stream.CommitAsync(
-                $"Vision revision {latest.Revision} (`{latest.Digest}`) is accepted. I created a personal task to prepare and submit the Producer bootstrap staffing plan; I’ll continue from that task and bring you the governed proposal.",
+                $"Vision revision {latest.Revision} (`{latest.Digest}`) is accepted. I created a personal task to recommend the Creative Director and Producer under me; I’ll continue from that task and bring you the governed proposal.",
                 cancellationToken);
             return;
         }
@@ -931,20 +915,24 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             if (!todoId.HasValue)
             {
                 var todo = await context.Platform.PersonalTodo.AddAsync(new AddPersonalTodoItemRequest(
-                    "Build the high-level game design document",
-                    "Create, review, and accept the authoritative high-level GDD before product development.",
+                    "Create the official game pitch",
+                    "Create the official game pitch and obtain exact CEO approval before recommending the Creative Director and Producer.",
                     "High", null, $"director-pitch:{state.IntakeId ?? conversationId:N}",
                     SourceConversationId: conversationId, SourceMessageId: incoming.MessageId,
                     CorrelationId: GameDirectorAgenda.VisionCorrelation(state.IntakeId ?? conversationId)) { WorkContext = TodoContext(state) }, cancellationToken);
                 todoId = todo.Id;
             }
+            current = await SaveStateAsync(state with { VisionTodoId = todoId,
+                HighLevelSourceTurnId = incoming.TurnId, HighLevelSourceMessageId = incoming.MessageId },
+                current.Revision, incoming.MessageId, $"pitch-request:{incoming.MessageId:N}", context, cancellationToken);
+            state = current.State;
             await PublishPitchWorkAcknowledgementAsync(stream, revision, cancellationToken);
             string pitch;
             try
             {
-                pitch = await CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.CachedAsync(
+                pitch = (await CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.CachedAsync(
                     $"director-pitch-output:{incoming.MessageId:N}:{revision}", context,
-                    () => GeneratePitchAsync(incoming, currentMessage, state, conversationId, stream, context, cancellationToken), cancellationToken);
+                    async () => new PitchDraft(await GeneratePitchAsync(incoming, currentMessage, state, conversationId, stream, context, cancellationToken)), cancellationToken)).Markdown;
             }
             catch (Exception exception) when (
                 IsRecoverablePitchGenerationFailure(exception, cancellationToken))
@@ -954,65 +942,20 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                         ? $"Your game direction and {DescribeInvolvementMode(state.ManagerPreferences.InvolvementMode)} involvement preference are saved, but the model returned no pitch text. Its output budget may have been spent on reasoning. Check Maximum pitch output tokens and the provider's ceiling, then retry; you do not need to re-enter your direction."
                         : exception is InvalidOperationException { Message: EnginePitchConflictError }
                             ? "Your game direction is saved, but the pitch did not pass the engine-choice check after one correction. I did not submit it for approval. Please retry; you do not need to re-enter your direction."
-                        : $"Your game direction and {DescribeInvolvementMode(state.ManagerPreferences.InvolvementMode)} involvement preference are saved, but the configured model timed out or was unavailable while generating the high-level vision. Retry this direction after checking the Video Game Director's LLM provider; you do not need to re-enter it.",
+                        : $"Your game direction and {DescribeInvolvementMode(state.ManagerPreferences.InvolvementMode)} involvement preference are saved, but the configured model timed out or was unavailable while generating the high-level vision. My pitch task will retry using your saved direction; you do not need to send it again.",
                     cancellationToken);
                 return;
             }
-            var digest = Digest(pitch);
-            var disposition = InitialVisionDisposition(state.ManagerPreferences.InvolvementMode);
-            var documentContent = pitch.Trim();
-            var proposal = new GamePitchRevision(revision, documentContent, digest, DateTimeOffset.UtcNow,
-                ExtractPositiveConstraints(currentMessage), references.Select(x => x.Sha256).Distinct().ToList());
-            ArtifactDocument document;
-            var managerOrganizationUserId = Guid.TryParse(
-                context.Identity?.ManagerEmployeeId, out var parsedManagerOrganizationUserId)
-                    ? parsedManagerOrganizationUserId
-                    : (Guid?)null;
             try
             {
-                if (!state.HighLevelArtifactId.HasValue)
-                {
-                    document = await context.Platform.Artifacts.CreateAsync(new CreateArtifactDocument(
-                        "Official Game Pitch", documentContent, VideoGameArtifactTypeKeys.Vision,
-                        $"high-level-gdd-create:{state.IntakeId ?? conversationId:N}", OriginConversationId: conversationId,
-                        StewardOrganizationUserId: managerOrganizationUserId), cancellationToken);
-                }
-                else
-                {
-                    _ = await context.Platform.Artifacts.ReviseAsync(new CreateArtifactRevision(
-                        state.HighLevelArtifactId.Value, state.HighLevelLatestRevisionId!.Value, documentContent,
-                        $"high-level-gdd-revision:{digest}"), cancellationToken);
-                    document = await context.Platform.Artifacts.GetAsync(state.HighLevelArtifactId.Value, cancellationToken);
-                }
-                var pendingRevision = document.Revisions.MaxBy(x => x.Number)!;
-                document = await context.Platform.Artifacts.SubmitAsync(new SubmitArtifactRevision(
-                    document.Id, pendingRevision.Id, $"high-level-gdd-submit:{pendingRevision.Id:N}",
-                    conversationId, managerOrganizationUserId), cancellationToken);
+                await PersistPitchAsync(pitch, currentMessage, state, current.Revision, conversationId,
+                    incoming.TurnId, incoming.MessageId, todoId, revision, context, cancellationToken);
             }
-            catch (PlatformCapabilityException exception) when (
-                exception.Capability.StartsWith("platform.artifact.", StringComparison.Ordinal))
+            catch (PlatformCapabilityException exception) when (exception.Capability.StartsWith("platform.artifact.", StringComparison.Ordinal))
             {
-                await stream.CommitAsync(
-                    $"{documentContent}\n\nI generated the pitch, but could not persist its high-level GDD because the Video Game Director's document grant is unavailable. The direction remains saved; approve the organization-level document-create grant and retry. ({exception.Message})",
-                    cancellationToken);
+                await stream.CommitAsync($"The pitch draft is saved, but document submission failed: {exception.Message}. The pitch task retains the request for recovery.", cancellationToken);
                 return;
             }
-            var latestArtifactRevision = document.Revisions.MaxBy(x => x.Number)!;
-            state = state with
-            {
-                Phase = GameDirectorPhase.HighLevelReview,
-                References = references,
-                Proposals = state.Proposals.Append(proposal).TakeLast(20).ToList(),
-                VisionTodoId = todoId,
-                HighLevelArtifactId = document.Id,
-                HighLevelLatestRevisionId = latestArtifactRevision.Id,
-                HighLevelAcceptedRevisionId = state.HighLevelAcceptedRevisionId,
-                HighLevelSourceTurnId = incoming.TurnId,
-                HighLevelSourceMessageId = incoming.MessageId,
-                AcceptedVision = state.AcceptedVision
-            };
-            var saved = await SaveStateAsync(state, current.Revision, Guid.NewGuid(),
-                $"pitch-revision:{digest}", context, cancellationToken);
             await stream.CommitAsync(BuildPitchReviewMessage(revision), cancellationToken);
             return;
         }
@@ -1042,7 +985,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         string currentMessage,
         GameDirectorOperatingState state,
         Guid conversationId,
-        AgentTurnStreamWriter stream,
+        AgentTurnStreamWriter? stream,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
@@ -1057,11 +1000,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var client = context.CreateChatClient(new AgentLlmSelection(
             incoming.ProviderProfileId,
             Settings.GetString("llmModel"),
-            new AgentLlmInvocationContext(conversationId, incoming.TurnId, "creative-pitch")));
-        var response = await StreamAssistantResponseAsync(client, [
-            new ChatMessage(ChatRole.System, SystemPrompt),
-            new ChatMessage(ChatRole.User, contents)
-        ], await context.Platform.Calendar.WithToolsAsync(new ChatOptions
+            new AgentLlmInvocationContext(conversationId, stream is null ? null : incoming.TurnId, "creative-pitch")));
+        ChatMessage[] messages = [new(ChatRole.System, SystemPrompt), new(ChatRole.User, contents)];
+        var options = await context.Platform.Calendar.WithToolsAsync(new ChatOptions
         {
             Temperature = 0.7f,
             MaxOutputTokens = ResolvePitchOutputTokens(Settings),
@@ -1070,7 +1011,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 Effort = ReasoningEffort.Low,
                 Output = ReasoningOutput.Full
             }
-        }, cancellationToken), stream, cancellationToken);
+        }, cancellationToken);
+        var response = stream is null
+            ? (await context.Platform.Calendar.GetResponseAsync(client, messages, options, cancellationToken)).Text
+            : await StreamAssistantResponseAsync(client, messages, options, stream, cancellationToken);
         if (string.IsNullOrWhiteSpace(response))
             throw new InvalidOperationException("The configured model returned an empty game pitch.");
         var conflict = PitchEngineConflict(state.ManagerPreferences, response);
@@ -1508,7 +1452,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var accepted = state.AcceptedVision;
         var todo = await context.Platform.PersonalTodo.AddAsync(new AddPersonalTodoItemRequest(
             "Create and submit the game-studio staffing plan",
-            "Prepare the Producer bootstrap hire to plan delivery of the accepted game vision, then submit the exact hiring and team-formation proposal through governed resource-change approval. Complete this task only after the proposal is durably recorded.",
+            "Prepare the shared Creative Director and Producer hires to lead creative direction and delivery of the accepted game vision, then submit the exact hiring and team-formation proposal through governed resource-change approval. Complete this task only after the proposal is durably recorded.",
             WorkPriorities.High,
             null,
             $"director-staffing-plan:{state.IntakeId ?? accepted.ConversationId:N}",
@@ -2799,6 +2743,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var index = await ReadPortfolioIndexAsync(context, cancellationToken);
         foreach (var entry in index.Projects.OrderBy(x => x.UpdatedAt))
         {
+            var sourceState = await ReadStateByKeyAsync(entry.StateKey, context, cancellationToken);
+            var sourceMessageId = sourceState.State.HighLevelSourceMessageId ?? sourceState.State.AcceptedVision?.MessageId
+                ?? sourceState.State.ManagerPreferences.SupportingMessageIds.LastOrDefault();
+            if (sourceMessageId == Guid.Empty) continue;
             var task = await context.Platform.PersonalTodo.AddAsync(new AddPersonalTodoItemRequest(
                 $"Review creative direction: {entry.WorkingTitle}",
                 $"Reconcile the durable creative state for project conversation {entry.ConversationId:D}, " +
@@ -2807,9 +2755,19 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 null,
                 $"director-project-review:{entry.IntakeId ?? entry.ConversationId:N}",
                 SourceConversationId: entry.ConversationId,
+                SourceMessageId: sourceMessageId,
                 CorrelationId: GameDirectorAgenda.ProjectReviewCorrelation(entry.ConversationId))
                 { WorkContext = new(WorkstreamId: entry.WorkstreamId, TeamId: entry.TeamId, SourceFingerprint: entry.IntakeId?.ToString("D")) },
                 cancellationToken);
+            if (sourceState.State.HighLevelArtifactId is null && sourceState.State.AcceptedVision is null)
+            {
+                var todos = await context.Platform.PersonalTodo.ListAsync(cancellationToken);
+                foreach (var pitchTask in todos.Boards.SelectMany(x => x.Items).Where(x => GameDirectorAgenda.IsVision(x) &&
+                    x.SourceConversationId == entry.ConversationId &&
+                    x.SourceMessageId == sourceMessageId &&
+                    x.Wait?.Reason == "The game direction is durable; waiting for the next chat turn to produce or retry the high-level GDD."))
+                    await TryRequeuePersonalTodoAsync(pitchTask.Id, context, cancellationToken);
+            }
             if (task.Status == PersonalTodoStatuses.Blocked &&
                 task.BlockReason == "A portfolio review requires its source project conversation.")
                 await TryRequeuePersonalTodoAsync(task.Id, context, cancellationToken);

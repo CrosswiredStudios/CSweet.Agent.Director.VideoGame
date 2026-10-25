@@ -1,6 +1,6 @@
 # Video Game Director
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.1.1** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -30,3 +30,13 @@ dotnet pack src/CSweet.Agent.Director.VideoGame -c Release --no-build --no-resto
 ```
 
 CI verifies extension hashes, public package dependencies, tests and identity. `agent-release.yml` builds the reviewed `.csab` release through `scripts/pack-csab.py`. Deploy through published releases and Installed Agents. This is a fresh-install role split; no persisted Creative Director state is migrated and no installed payload is patched.
+
+## Initial pitch recovery (0.1.1)
+
+The Director saves the CEO source and pitch task before generating the official pitch. The task
+can resume after a provider/document interruption without asking the CEO to repeat direction;
+cached drafts and stable document keys prevent duplicate documents. A current authorized source
+read is required. Exact CEO document approval still gates the shared Creative Director and Producer
+recommendations. Attention review wakes legacy 0.1.0 tasks that waited for another chat message.
+Reporting questions carry real conversation-message anchors, and portfolio review tasks retain
+both source conversation and message references.

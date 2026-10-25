@@ -205,6 +205,7 @@ public sealed class GameDirectorInteractionTests
         {
             IntakeConversationId = conversationId,
             WorkingTitle = "Clockwork Tides",
+            HighLevelSourceMessageId = Guid.NewGuid(),
             Phase = GameDirectorPhase.Discovery
         };
         var portfolio = new GameDirectorPortfolioIndex
@@ -262,7 +263,7 @@ public sealed class GameDirectorInteractionTests
         Assert.Equal($"director-project-review:{conversationId:N}", captured.IdempotencyKey);
         Assert.Equal(GameDirectorAgenda.ProjectReviewCorrelation(conversationId), captured.CorrelationId);
         Assert.Equal(conversationId, captured.SourceConversationId);
-        Assert.Null(captured.SourceMessageId);
+        Assert.Equal(state.HighLevelSourceMessageId, captured.SourceMessageId);
         Assert.Equal(1, requeued);
     }
 

@@ -14,20 +14,26 @@ public sealed partial class VideoGameDirectorAgent
     internal sealed record ReportingPreferences(Guid ConversationId, string? Cadence = null, string? Format = null,
         string? TimeZone = null, string LocalTime = "09:00", DateTimeOffset? NextDue = null, string? LastMilestoneDigest = null);
 
-    private static Task<UserQuestionResponse> AskReportingCadenceAsync(Guid chat, Guid source, AgentRuntimeContext context, CancellationToken token) =>
-        context.Platform.AskUserAsync(new(chat, null,
+    private static async Task<UserQuestionResponse> AskReportingCadenceAsync(Guid chat, Guid source, AgentRuntimeContext context, CancellationToken token)
+    {
+        var anchor = await context.Platform.Communication.SendMessageAsync(chat,
+            "Let’s agree on how often you want portfolio updates and which format to use.",
+            $"director-reporting-intro:{source:N}", token);
+        return await context.Platform.AskUserAsync(new(chat, null,
             "How often should I send portfolio updates? Weekly is my recommendation, with material decisions and blockers escalated separately. You can also enter 'Reports on request'.",
             [new("weekly", "Reports weekly", "One consolidated weekly portfolio update."),
              new("weekdays", "Reports weekdays", "A short update each weekday."),
              new("daily", "Reports daily", "A daily portfolio update."),
              new("milestones", "Reports at milestones", "Updates when material project milestones change.")],
-            "weekly", $"director-reporting-cadence:{source:N}"), token);
+            "weekly", $"director-reporting-cadence:{source:N}", ConversationMessageId: anchor.Id), token);
+    }
 
     private async Task<bool> HandleReportingPreferenceAsync(CommunicationMessageReceivedEvent incoming, Guid chat,
         string text, AgentTurnStreamWriter stream, AgentRuntimeContext context, CancellationToken token)
     {
         var state = await context.Platform.ReadOperatingStateAsync<ReportingPreferences>(ReportingKey, token);
         var prior = state?.Payload ?? new ReportingPreferences(chat);
+        text = ReportingAnswer(text);
         var cadence = ReportingCadence(text);
         var format = text.Trim().ToLowerInvariant() switch
         {
@@ -84,6 +90,14 @@ public sealed partial class VideoGameDirectorAgent
             : $"Portfolio updates will use {updated.Format.ToLowerInvariant()} on the {updated.Cadence} cadence" +
               (updated.NextDue is null ? "." : $", at {updated.LocalTime} {updated.TimeZone}."), token);
         return true;
+    }
+
+    internal static string ReportingAnswer(string text)
+    {
+        const string marker = "\nAnswer: ";
+        var index = text.LastIndexOf(marker, StringComparison.Ordinal);
+        return text.StartsWith("Decision: ", StringComparison.Ordinal) && index >= 0
+            ? text[(index + marker.Length)..].Trim() : text.Trim();
     }
 
     internal static string? ReportingCadence(string text) => text.Trim().ToLowerInvariant() switch
