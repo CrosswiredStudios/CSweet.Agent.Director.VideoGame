@@ -65,7 +65,7 @@ public sealed class ProductionCommitmentTests
             ManagerPreferences = new ManagerPreferenceProfile { EnginePreferences = ["latest Phaser"] }
         };
         var result = await new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(
-            state, 1, Guid.NewGuid(), new AgentTestRuntime().CreateContext(), default);
+            state, 1, Guid.NewGuid(), RosterRuntime(state, []).CreateContext(), default);
 
         Assert.False(result.Ready);
         Assert.Null(result.State.ToolchainBlockerDecisionId);
@@ -83,7 +83,7 @@ public sealed class ProductionCommitmentTests
                 [CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.TechnicalDirector] = Guid.NewGuid()
             }
         };
-        var runtime = new AgentTestRuntime()
+        var runtime = RosterRuntime(state, [Technical(state.SpecialistEmployeeIds.Values.Single())])
             .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
                 PlatformCapabilities.ToolchainCatalogRead, (request, _) =>
                 {
@@ -171,6 +171,43 @@ public sealed class ProductionCommitmentTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => VideoGameDirectorAgent.DecideProductionChoiceAsync(
             decision, "hybrid", "Different choice", "replay-other", context, default));
     }
+
+    [Theory]
+    [InlineData("new-hire", true)]
+    [InlineData("replacement", true)]
+    [InlineData("removed", false)]
+    [InlineData("wrong-role", false)]
+    [InlineData("unavailable", false)]
+    [InlineData("wrong-team", false)]
+    public async Task ToolchainCheckDiscoversPostPackageTechnicalHireFromCurrentRoster(string condition, bool expected)
+    {
+        var oldLead = Guid.NewGuid(); var newLead = Guid.NewGuid();
+        var state = State() with { DetailedDesignPackageId = Guid.NewGuid(),
+            ToolchainBlockerDecisionId = Guid.NewGuid(),
+            SpecialistEmployeeIds = condition == "new-hire" ? new Dictionary<string, Guid>()
+                : new Dictionary<string, Guid> { ["game-technical-director"] = oldLead } };
+        var candidate = Technical(newLead) with {
+            IsAvailable = condition != "unavailable",
+            DeclaredRoleKeys = condition == "wrong-role" ? ["game-engineer"] : ["game-technical-director"] };
+        var runtime = RosterRuntime(state, condition == "removed" ? [] : [candidate], condition == "wrong-team");
+        var catalogs = 0;
+        runtime.RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
+            PlatformCapabilities.ToolchainCatalogRead, (_, _) => { catalogs++; return Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]); });
+        var result = await new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default);
+        Assert.False(result.Ready);
+        Assert.Equal(expected ? 1 : 0, catalogs);
+        if (expected) Assert.Equal(newLead, result.State.SpecialistEmployeeIds["game-technical-director"]);
+    }
+
+    private static AgentTeammate Technical(Guid employee) => new(employee.ToString("D"), "Technical Director", "Agent",
+        null, null, "Teammate", "Active") { AgentInstallationId = Guid.NewGuid(), RuntimeEligibility = "Eligible",
+        DeclaredRoleKeys = ["game-technical-director"], EffectiveCapabilities = ["work.execution.run"] };
+
+    private static AgentTestRuntime RosterRuntime(GameDirectorOperatingState state, IReadOnlyList<AgentTeammate> members, bool wrongTeam = false) =>
+        new AgentTestRuntime().RegisterCapability<TeamRosterV2Request, TeamRosterV2Response>(PlatformCapabilities.TeamRosterReadV2,
+            (request, _) => { Assert.Equal(state.TeamId, request.TeamId); return Task.FromResult(new TeamRosterV2Response(
+                new AgentTeamContext((wrongTeam ? Guid.NewGuid() : state.TeamId!.Value).ToString("D"), "game", "Game", 2,
+                    "producer", "Producer", members, [], members.Count, false), state.WorkstreamId)); });
 
     private static GameDirectorOperatingState State() => new() {
         WorkstreamId = Guid.NewGuid(), TeamId = Guid.NewGuid(), WorkingTitle = "Gridlock",
