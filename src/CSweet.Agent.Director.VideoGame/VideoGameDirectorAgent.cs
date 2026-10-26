@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.2.7";
+    public override string Version => "0.2.8";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -234,6 +234,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (decision.TypeKey == "video-game.management-direction.v1")
             await WakePlanningFollowthroughAsync(decision.WorkstreamId, null, context, cancellationToken);
         await WakeProductionCommitmentAsync(current.State, decision.TypeKey, context, cancellationToken);
+        if (decision.TypeKey == VideoGameDecisionTypeKeys.ToolchainSelection)
+            await WithdrawMisroutedBuildDecisionAsync(decision, current.State, context, cancellationToken);
         var waiting = current.State.PendingEscalations.Where(x => x.DecisionId == decision.Id && !x.Relayed).ToList();
         if (waiting.Count == 0) return;
         foreach (var escalation in waiting.Where(x => x.RequestingEmployeeId != Guid.Empty))
@@ -522,7 +524,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             return AgentCoordinationTurnResult.Blocked("Creative decisions belong to Naomi. Request her project-scoped creative review; bring scope, resource or business conflicts to the Video Game Director.");
         if (IsCreativeQuestion(question))
         {
-            var answer = await GenerateCreativeAnswerAsync(question, current.State, request.SessionId,
+            var answer = await GenerateDirectorAnswerAsync(question, current.State, request.SessionId,
                 null, context, cancellationToken);
             return AgentCoordinationTurnResult.Continue(answer);
         }
@@ -715,6 +717,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             return;
         }
 
+        if (isManager && await RouteApprovedProjectRequestAsync(incoming, conversationId, currentMessage,
+                state, stream, context, cancellationToken)) return;
+
         if (state.CreativeDirectorEmployeeId is { } creative && state.AcceptedVision is not null &&
             IsCreativeQuestion(currentMessage) && inboundDisposition is GameDirectorInboundDisposition.InformationQuestion or GameDirectorInboundDisposition.DurableAction)
         {
@@ -735,7 +740,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     cancellationToken);
                 return;
             }
-            var answer = await GenerateCreativeAnswerAsync(
+            var answer = await GenerateDirectorAnswerAsync(
                 currentMessage, state, incoming.MessageId, stream, context, cancellationToken);
             await stream.CommitAsync($"{answer}\n\nNo personal task was created; I completed this bounded answer in the current turn.",
                 cancellationToken);
@@ -753,7 +758,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 return;
             }
             var todo = await AddChatActionTodoAsync(
-                incoming, conversationId, currentMessage, context, cancellationToken);
+                incoming, conversationId, currentMessage, state, context, cancellationToken);
             await stream.CommitAsync(
                 $"I created one durable Video Game Director task `{todo.Id:D}` for this request. " +
                 "It is Ready on my personal board and will produce a revisioned creative response document.",
@@ -1339,7 +1344,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
 
     private const string AgentIdFallback = "com.csweet.video-game-director";
 
-    private async Task<string> GenerateCreativeAnswerAsync(
+    private async Task<string> GenerateDirectorAnswerAsync(
         string question,
         GameDirectorOperatingState state,
         Guid sessionId,
@@ -1348,12 +1353,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         CancellationToken cancellationToken)
     {
         var provider = Settings.GetGuid("llmProviderId") ?? Guid.Empty;
-        if (provider == Guid.Empty) return "The creative answer is blocked because no model provider is configured.";
+        if (provider == Guid.Empty) return "The Director answer is blocked because no model provider is configured.";
         var client = context.CreateChatClient(new AgentLlmSelection(provider, Settings.GetString("llmModel"),
-            new AgentLlmInvocationContext(InvocationKind: "creative-oversight")));
+            new AgentLlmInvocationContext(InvocationKind: "director-oversight")));
         var response = await StreamAssistantResponseAsync(client, [
             new ChatMessage(ChatRole.System,
-                "Answer only within gameplay experience, creative intent, theme, tone, narrative, aesthetics, and accepted vision scope. Be decisive and concise. Do not ask a follow-up question in prose. If clarification is required, state the ambiguity declaratively so the runtime can route it through structured multiple choice."),
+                "Answer as the Video Game Director within portfolio direction, approved scope, business constraints, resources, budget and CEO reporting. Naomi owns creative direction; the Producer owns delivery and coordinates technical leadership. Do not redesign specialist work or claim unverified operations succeeded. Be concise. Do not ask a follow-up question in prose. If clarification is required, state the ambiguity declaratively so the runtime can route it through structured multiple choice."),
             new ChatMessage(ChatRole.User,
                 $"Accepted vision:\n{state.AcceptedVision?.Markdown}\n\nQuestion:\n{question}\n\nCoordination session: {sessionId:D}")
         ], await context.Platform.Calendar.WithToolsAsync(new ChatOptions
@@ -1364,7 +1369,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 Output = ReasoningOutput.Full
             }
         }, cancellationToken), stream, cancellationToken);
-        return string.IsNullOrWhiteSpace(response) ? "No creative answer was produced." : response;
+        return string.IsNullOrWhiteSpace(response) ? "No Director answer was produced." : response;
     }
 
     internal static async Task<string> StreamAssistantResponseAsync(
@@ -1405,7 +1410,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         CancellationToken cancellationToken)
     {
         var provider = Settings.GetGuid("llmProviderId")
-            ?? throw new InvalidOperationException("A configured model provider is required for creative agenda work.");
+            ?? throw new InvalidOperationException("A configured model provider is required for Director agenda work.");
         var client = context.CreateChatClient(new AgentLlmSelection(
             provider, Settings.GetString("llmModel"),
             new AgentLlmInvocationContext(InvocationKind: "creative-personal-agenda")));
@@ -1413,7 +1418,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             new ChatMessage(ChatRole.System,
                 "You are the Video Game Director completing one bounded, authorized personal agenda item. " +
                 "Produce an executive-readable Markdown response with: Outcome, Recommendation, Creative Rationale, " +
-                "Constraints Preserved, Risks, and Next Decision. Stay within creative direction. Do not claim to have " +
+                "Constraints Preserved, Risks, and Next Decision. Stay within Director business, scope and resource responsibilities. Creative detail belongs to Naomi; delivery and technical execution belong to the Producer and technical team. Do not claim to have " +
                 "inspected evidence that is not supplied, and identify missing exact evidence as a blocker."),
             new ChatMessage(ChatRole.User,
                 $"Agenda item: {agendaItemId:D}\n\nRequested action:\n{request}\n\n" +
@@ -1421,22 +1426,23 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 $"Discovery context:\n{string.Join("\n", state.DiscoveryInputs)}")
         ], cancellationToken: cancellationToken);
         if (string.IsNullOrWhiteSpace(response.Text))
-            throw new InvalidOperationException("The configured model returned an empty creative agenda deliverable.");
+            throw new InvalidOperationException("The configured model returned an empty Director agenda deliverable.");
         return response.Text.Trim();
     }
 
     private static string CreateChatStatus(GameDirectorOperatingState state) =>
-        $"Creative Direction status: **{state.Phase}** for **{state.WorkingTitle ?? "the current game"}**. " +
+        $"Video Game Director status: **{state.Phase}** for **{state.WorkingTitle ?? "the current game"}**. " +
         $"Accepted vision: **{(state.AcceptedVision is null ? "pending" : "yes")}**; " +
         $"project board: **{(state.BoardId.HasValue ? "active" : "pending")}**; " +
         $"staffed specialists: **{state.SpecialistEmployeeIds.Count}**; " +
-        $"unresolved creative escalations: **{state.PendingEscalations.Count(x => !x.Relayed)}**. " +
+        $"unresolved leadership decisions: **{state.PendingEscalations.Count(x => !x.Relayed)}**. " +
         "I answered from durable state and did not create a new personal task.";
 
     private static async Task<PersonalTodoItem> AddChatActionTodoAsync(
         CommunicationMessageReceivedEvent incoming,
         Guid conversationId,
         string request,
+        GameDirectorOperatingState state,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
@@ -1452,7 +1458,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             SourceConversationId: conversationId,
             SourceMessageId: incoming.MessageId,
             CorrelationId: GameDirectorAgenda.ChatActionCorrelation(incoming.MessageId),
-            CausationId: incoming.MessageId.ToString("D")), cancellationToken);
+            CausationId: incoming.MessageId.ToString("D")) { WorkContext = TodoContext(state) }, cancellationToken);
     }
 
     private async Task<(GameDirectorOperatingState State, long? Revision)> EnsureStaffingTodoAsync(
@@ -3099,8 +3105,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     }
 
     internal static bool IsCreativeQuestion(string value) =>
-        !new[] { "architecture", "implementation", "code", "legal", "license", "contract" }
-            .Any(term => value.Contains(term, StringComparison.OrdinalIgnoreCase));
+        !Regex.IsMatch(value, @"(?i)\b(?:architecture|implementation|code|legal|licen[cs]e|contract|budget|spend|hire|hiring|sprint|staffing|build|runner|certif\w*|runtime)\b") &&
+        Regex.IsMatch(value, @"(?i)\b(?:creative|player|gameplay|core\s+loop|combat|feel|tone|theme|narrative|story|protagonist|character|art|visual|aesthetic|soundtrack|music|audio|sequel|mechanic|design)\w*\b");
 
     internal static string Digest(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim()))).ToLowerInvariant();

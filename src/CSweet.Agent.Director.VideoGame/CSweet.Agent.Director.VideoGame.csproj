@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Version>0.2.7</Version>
+    <Version>0.2.8</Version>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CSweet.WorkManagement.Contracts" Version="5.1.0" Condition="'$(UseLocalCSweetWorkManagementContracts)' != 'true'" />
-    <PackageReference Include="CSweet.Agent.SDK" Version="5.5.0" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
+    <PackageReference Include="CSweet.Agent.SDK" Version="5.5.1" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
     <PackageReference Include="CSweet.Memory" Version="0.5.0" Condition="'$(UseLocalCSweetMemory)' != 'true'" />
     <PackageReference Include="CSweet.Memory.Broker" Version="0.5.0" Condition="'$(UseLocalCSweetMemory)' != 'true'" />
   </ItemGroup>

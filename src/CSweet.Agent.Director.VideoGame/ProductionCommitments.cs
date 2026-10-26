@@ -37,6 +37,13 @@ public sealed partial class VideoGameDirectorAgent
             return PersonalTodoResult.Blocked("An approved project and accepted direction are required for production decisions.");
         try
         {
+            if (current.State.ToolchainBlockerDecisionId is { } blockerId &&
+                item.CorrelationId!.StartsWith(ProductionCommitmentPrefix + "toolchain:", StringComparison.Ordinal))
+            {
+                var blocker = (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(blockerId), token)).SingleOrDefault();
+                if (blocker is not null)
+                    await WithdrawMisroutedBuildDecisionAsync(blocker, current.State, context, token);
+            }
             var outcome = item.CorrelationId!.StartsWith(ProductionCommitmentPrefix + "assets:", StringComparison.Ordinal)
                 ? await EnsureAssetStrategyAsync(current.State, current.Revision, item.Id, context, token)
                 : await EnsureToolchainDecisionAsync(current.State, current.Revision, item.Id, context, token);
