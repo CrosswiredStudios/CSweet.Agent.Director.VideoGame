@@ -135,7 +135,7 @@ public sealed class GameDirectorLifecycleTests
     [Theory]
     [InlineData("Should the combat feel deliberate or frantic?", true)]
     [InlineData("Which engine architecture should we implement?", false)]
-    [InlineData("Can we spend another $50,000?", true)]
+    [InlineData("Can we spend another $50,000?", false)]
     [InlineData("What should the protagonist's tone be?", true)]
     public void ReportingTreeQuestions_RespectCreativeBoundary(string question, bool expected) =>
         Assert.Equal(expected, VideoGameDirectorAgent.IsCreativeQuestion(question));

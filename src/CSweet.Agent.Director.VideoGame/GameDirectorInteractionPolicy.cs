@@ -20,7 +20,7 @@ internal static partial class GameDirectorInteractionPolicy
         if (string.IsNullOrWhiteSpace(value))
             return GameDirectorInboundDisposition.Acknowledge;
 
-        if (value.StartsWith("Decision:", StringComparison.OrdinalIgnoreCase) ||
+        if (IsDecisionReply(value) || value.StartsWith("Decision:", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("selected option:", StringComparison.OrdinalIgnoreCase) ||
             value.Contains("\nAnswer:", StringComparison.OrdinalIgnoreCase))
             return GameDirectorInboundDisposition.WorkflowInput;
@@ -39,6 +39,9 @@ internal static partial class GameDirectorInteractionPolicy
 
         return GameDirectorInboundDisposition.WorkflowInput;
     }
+
+    internal static bool IsDecisionReply(string value) =>
+        Regex.IsMatch(value, @"(?im)^\s*Decision:\s*\S") && Regex.IsMatch(value, @"(?im)(?:^|\s)Answer:\s*\S");
 
     [GeneratedRegex(@"(?ix)^\s*(?:ok(?:ay)?|thanks?(?:\s+you)?|got\s+it|understood|sounds\s+good|great|perfect|acknowledged|confirmed)[.!\s]*$")]
     private static partial Regex Acknowledgement();
@@ -112,6 +115,6 @@ internal static class GameDirectorAgenda
     {
         var singleLine = Regex.Replace(message.Trim(), @"\s+", " ");
         if (singleLine.Length > 96) singleLine = $"{singleLine[..93]}...";
-        return $"Creative request: {singleLine}";
+        return $"Director request: {singleLine}";
     }
 }
