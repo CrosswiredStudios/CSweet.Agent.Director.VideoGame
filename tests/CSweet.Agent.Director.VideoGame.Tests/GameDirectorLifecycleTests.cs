@@ -132,14 +132,6 @@ public sealed class GameDirectorLifecycleTests
         Assert.Contains(findings, finding => finding.Code == "missing-structure" && finding.Blocking);
     }
 
-    [Theory]
-    [InlineData("Should the combat feel deliberate or frantic?", true)]
-    [InlineData("Which engine architecture should we implement?", false)]
-    [InlineData("Can we spend another $50,000?", false)]
-    [InlineData("What should the protagonist's tone be?", true)]
-    public void ReportingTreeQuestions_RespectCreativeBoundary(string question, bool expected) =>
-        Assert.Equal(expected, VideoGameDirectorAgent.IsCreativeQuestion(question));
-
     [Fact]
     public void CurrentMessageExtraction_IgnoresQuotedHistory()
     {

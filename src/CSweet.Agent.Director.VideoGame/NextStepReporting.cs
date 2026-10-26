@@ -32,7 +32,7 @@ internal static class GameDirectorNextStep
             ? "I start the production-brief session with the Producer"
             : "the Producer and I converge on the shared production brief",
         GameDirectorPhase.PackageReview => "I review the Producer's detailed design package",
-        GameDirectorPhase.Oversight => "the Producer leads delivery while I provide creative oversight",
+        GameDirectorPhase.Oversight => "the Producer leads delivery, Naomi leads creative direction, and I oversee business scope and resources",
         _ => "I reconcile the project's current state"
     };
 }

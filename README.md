@@ -1,4 +1,4 @@
-# Video Game Director 0.2.8
+# Video Game Director 0.2.9
 
 Approved-project requests retain the exact pitch and project context through SDK tracked delegation. Creative direction goes to the Creative Director; staffing, technical coordination and sprint delivery go to the Producer. Platform administration installs and certifies build capacity. Decision replies are reconciled with the recorded widget decision and never become creative assignments or new approvals.
 
@@ -7,7 +7,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.2.8** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.2.9** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -74,3 +74,5 @@ manual database repair is needed.
 ## Identity
 
 Marcus Vale is the Video Game Director. His portrait uses the roster’s softly sculpted clay-like style, with a midnight-teal blazer and teal-gray background. Branding assets live in `assets/branding/`; the manifest links to published repository assets and the app includes an offline copy.
+
+Director follow-through resolves business scope, resources and portfolio priorities. Authenticated project leads use SDK interactions; unsupported raw coordination cannot create a CEO decision. SDK delegation cancellation stops tracking only and does not withdraw another owner's executable work.
