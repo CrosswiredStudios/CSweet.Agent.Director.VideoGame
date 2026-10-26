@@ -5,6 +5,18 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class HandoffReviewTests
 {
+    [Fact]
+    public async Task Expected_creative_review_wait_does_not_fail_the_attention_cycle()
+    {
+        var participant = new AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Marcus", "Director");
+        var session = new AgentCoordinationSession(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            participant, participant, "Brief", "Refine", [], "Blocked", 2, 2, null, false,
+            "Awaiting Naomi's creative review of the exact production brief.", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        var runtime = new AgentTestRuntime().RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(
+            CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(session));
+        await VideoGameDirectorAgent.CheckProducerHandoffAsync(new() { HandoffSessionId = session.Id }, runtime.CreateContext(), default);
+    }
+
     [Theory]
     [InlineData("Failed", true)]
     [InlineData("Blocked", true)]
