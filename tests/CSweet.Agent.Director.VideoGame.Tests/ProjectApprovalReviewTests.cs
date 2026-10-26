@@ -63,6 +63,10 @@ public sealed class ProjectApprovalReviewTests
                 models++;
                 var prompt = r.GetProperty("messages")[0].GetProperty("text").GetString()!;
                 Assert.Contains("spending policy", prompt); Assert.Contains("Escalate", prompt);
+                Assert.Contains("accountableManagerOrganizationUserId MUST remain the", prompt);
+                Assert.Contains("assigned Producer", prompt);
+                Assert.Contains("authority envelope is a ceiling", prompt);
+                Assert.Contains("project-approval", prompt);
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { text = JsonSerializer.Serialize(new { decisionKind = verdict, rationale = "Specific review assessment." }), role = "assistant" })); })
             .RegisterCapability<JsonElement, JsonElement>("platform.project-approval.decide.v1", (r, _) => {
                 decision = r; pending = false; return Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())); });
@@ -79,5 +83,8 @@ public sealed class ProjectApprovalReviewTests
         Assert.Equal("exact-hash", decision.GetProperty("payloadHash").GetString());
         Assert.Equal("proposal-key", decision.GetProperty("actionIdempotencyKey").GetString());
         Assert.Equal(verdict, decision.GetProperty("decisionKind").GetString());
+        if (includePitch)
+            Assert.Contains(cached.Values, entry => entry.Payload.TryGetProperty("workstreamProposalId", out var saved) &&
+                saved.ValueKind == JsonValueKind.String && saved.GetGuid() == proposal);
     }
 }
