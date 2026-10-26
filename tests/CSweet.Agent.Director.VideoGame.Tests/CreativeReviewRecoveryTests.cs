@@ -63,6 +63,13 @@ public sealed class CreativeReviewRecoveryTests
     }
 
     [Fact]
+    public void Accepted_review_can_retain_positive_observations_but_cannot_hide_required_changes()
+    {
+        Assert.True(VideoGameDirectorAgent.ValidCreativeReview(new("accepted", "The pitch is preserved", ["All approved creative pillars are preserved"], [], false)));
+        Assert.False(VideoGameDirectorAgent.ValidCreativeReview(new("accepted", "Contradictory", ["Scope changed"], ["Restore scope"], false)));
+    }
+
+    [Fact]
     public void Rework_that_needs_Director_judgment_is_valid_but_is_not_acceptance()
     {
         Assert.True(VideoGameDirectorAgent.ValidCreativeReview(new("changes-required", "Resolve evidence method",
