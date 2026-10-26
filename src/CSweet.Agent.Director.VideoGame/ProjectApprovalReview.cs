@@ -60,6 +60,12 @@ public sealed partial class VideoGameDirectorAgent
             current.State.ProducerEmployeeId == review.RequesterId && plan.AccountableManagerOrganizationUserId == review.RequesterId &&
             plan.InitialEvidence.Any(e => e.Kind == "artifact" && e.ResourceId == approved.ArtifactId &&
                 e.RevisionId == approved.ArtifactRevisionId && e.Digest == approved.ArtifactRevisionHash);
+        // Revision recovery can submit a new proposal outside the original coordination turn.
+        // Persist the exact current proposal before deciding it so its created project remains
+        // discoverable even if the original conversation is blocked or its reply is lost.
+        if (hasApprovedPitch && current.State.WorkstreamProposalId != review.ProposalId)
+            await SaveStateAsync(current.State with { WorkstreamProposalId = review.ProposalId }, current.Revision,
+                review.ProposalId, $"project-foundation-proposal:{review.ProposalId:N}", context, token);
         var projects = plan.ProfileKey is "video-game-production.v2" or "video-game-manager-brief.v1"
             ? (await context.Platform.ReadPortfolioAsync(new(), token)).Workstreams
                 .Select(x => x.Workstream).Where(x => x.AccountableManagerOrganizationUserId == plan.AccountableManagerOrganizationUserId &&

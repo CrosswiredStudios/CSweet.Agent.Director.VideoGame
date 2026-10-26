@@ -83,5 +83,8 @@ public sealed class ProjectApprovalReviewTests
         Assert.Equal("exact-hash", decision.GetProperty("payloadHash").GetString());
         Assert.Equal("proposal-key", decision.GetProperty("actionIdempotencyKey").GetString());
         Assert.Equal(verdict, decision.GetProperty("decisionKind").GetString());
+        if (includePitch)
+            Assert.Contains(cached.Values, entry => entry.Payload.TryGetProperty("workstreamProposalId", out var saved) &&
+                saved.ValueKind == JsonValueKind.String && saved.GetGuid() == proposal);
     }
 }
