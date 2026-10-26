@@ -5,6 +5,18 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class CreativeReviewRecoveryTests
 {
+    [Fact]
+    public async Task Attention_recovers_the_child_before_a_later_reconciliation_failure()
+    {
+        var f = new Fixture("downstream-failure");
+        var method = typeof(VideoGameDirectorAgent).GetMethod("HandleManagerAttentionReviewAsync",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => (Task)method.Invoke(new VideoGameDirectorAgent(),
+            [new AgentAttentionReviewContext(Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(5), "test"), f.Context, CancellationToken.None])!);
+        Assert.Equal("Downstream reconciliation unavailable", error.Message);
+        Assert.Equal(1, f.Resumes);
+    }
+
     [Theory]
     [InlineData("valid", 1)]
     [InlineData("other-agent", 0)]
@@ -64,12 +76,19 @@ public sealed class CreativeReviewRecoveryTests
                 "Review", "Review exact evidence", [], "Blocked", 4, 3, null, false, "Incomplete review", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, turns)
                 { WorkContext = new(Guid.NewGuid(), project, team, null, null, null, null, Guid.NewGuid(), null, null) };
             var runtime = new AgentTestRuntime()
+                .RegisterCapability<ListAgentCoordinationRequest, AgentCoordinationSessions>(CommunicationCapabilities.CoordinationList,
+                    (_, _) => Task.FromResult(new AgentCoordinationSessions([Session])))
                 .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(Session))
                 .RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume, (r, _) => {
                     Resumes++; Assert.Equal(Session.Revision, r.ExpectedRevision); return Task.FromResult(Session with { Status = "Active" }); })
                 .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
-                    (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
-                        new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(), JsonSerializer.SerializeToElement(state), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))));
+                    (r, _) => {
+                        if (fault == "downstream-failure" && r.StateKey != "director-creative-review-parents" && r.StateKey != VideoGameDirectorAgent.ProjectStateKey(project, null))
+                            throw new InvalidOperationException("Downstream reconciliation unavailable");
+                        return Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
+                            new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(), r.StateKey == "director-creative-review-parents"
+                                ? JsonSerializer.SerializeToElement(new { Parents = new[] { parent } }) : JsonSerializer.SerializeToElement(state), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+                    });
             Context = runtime.CreateContext(identity: new((fault == "other-agent" ? Guid.NewGuid() : director).ToString("D"), "Marcus", null, "Director", null, [], null, Guid.NewGuid().ToString("D"), "CEO"));
         }
     }
