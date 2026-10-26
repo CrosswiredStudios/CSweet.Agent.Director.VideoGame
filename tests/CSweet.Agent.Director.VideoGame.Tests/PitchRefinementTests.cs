@@ -12,7 +12,8 @@ public sealed class PitchRefinementTests
     [InlineData(true, false, false, true)]
     [InlineData(true, true, true, true)]
     [InlineData(true, true, true, false)]
-    public async Task BothProducerConfidenceAndCreativeAcceptanceAreRequired(bool producerReady, bool directorAccepts, bool expectedAcceptance, bool cached)
+    [InlineData(true, true, false, false, true)]
+    public async Task BothProducerConfidenceAndCreativeAcceptanceAreRequired(bool producerReady, bool directorAccepts, bool expectedAcceptance, bool cached, bool requiresDirector = false)
     {
         var producer = Guid.NewGuid(); var director = Guid.NewGuid(); var workstream = Guid.NewGuid(); var team = Guid.NewGuid();
         var session = Guid.NewGuid(); var document = Guid.NewGuid(); var revision = Guid.NewGuid(); var decisions = 0;
@@ -28,7 +29,7 @@ public sealed class PitchRefinementTests
                     [new(revision, 1, null, markdown, "draft-hash", "Submitted", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null)]) { WorkstreamId = workstream, TeamId = team }))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
                 (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(cached || request.StateKey.StartsWith("director-creative-review:") ? new(Guid.NewGuid(), request.StateKey, "test", 1, "Active",
-                    new Dictionary<string, string>(), [], "cached", [], Guid.NewGuid(), request.StateKey.StartsWith("director-creative-review:") ? CreativeReviewFixture.Accepted(state, document, revision, "draft-hash") : JsonSerializer.SerializeToElement(new DirectorReview(directorAccepts, "Answers and scope assessment", markdown)), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) : null)))
+                    new Dictionary<string, string>(), [], "cached", [], Guid.NewGuid(), request.StateKey.StartsWith("director-creative-review:") ? CreativeReviewFixture.Accepted(state, document, revision, "draft-hash", requiresDirector) : JsonSerializer.SerializeToElement(new DirectorReview(directorAccepts, "Answers and scope assessment", markdown)), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow) : null)))
             .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
                 (request, _) => Task.FromResult(new AgentOperatingStateResponse(Guid.NewGuid(), request.StateKey, "test", 1, "Active",
                     new Dictionary<string, string>(), [], "review", [], Guid.NewGuid(), request.Payload, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)))
@@ -37,6 +38,9 @@ public sealed class PitchRefinementTests
                 modelCalls++; Assert.Equal(8192, request.GetProperty("maxOutputTokens").GetInt32());
                 var prompt = request.GetProperty("messages")[0].GetProperty("text").GetString()!;
                 Assert.Contains("never reproduce it", prompt);
+                Assert.Contains("not automatic CEO escalation", prompt);
+                Assert.Contains("never prerequisites to staffing", prompt);
+                if (requiresDirector) Assert.Contains("A playable build was requested before staffing", request.GetProperty("messages")[1].GetProperty("text").GetString());
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { text = JsonSerializer.Serialize(
                     new DirectorReview(directorAccepts, "Scope and criteria are sufficient.", ""), PitchProtocol.Json), role = "assistant" }));
             })

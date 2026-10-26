@@ -27,8 +27,6 @@ public sealed partial class VideoGameDirectorAgent
         if (ownerWait is not null) return ownerWait;
         var creative = await EnsureCreativeReviewAsync(state, document, revision, request.SessionId, context, token);
         if (creative is null) return AgentCoordinationTurnResult.Blocked("Awaiting Naomi's creative review of the exact production brief.");
-        if (creative.RequiresDirector)
-            return await EscalatePitchAsync(request, state, review, creative.Summary + "\n" + string.Join("\n", creative.Findings), context, token);
         if (creative.Disposition == "changes-required")
             return AgentCoordinationTurnResult.Continue("Naomi requires these creative corrections: " + creative.Summary,
                 PitchProtocol.Artifact(PitchProtocol.ReplyType, pitch.Digest, new PitchReply(pitch.Digest,
@@ -42,7 +40,14 @@ public sealed partial class VideoGameDirectorAgent
             var response = await client.GetResponseAsync([
                 new ChatMessage(ChatRole.System, AgentInteractionInstructions.Compose("""
                     Collaborate with the Producer to turn the accepted pitch into a sufficient production brief.
-                    Naomi has reviewed this exact draft for creative consistency. Resolve only business scope,
+                    Naomi has reviewed this exact draft for creative consistency. RequiresDirector means
+                    escalation to YOU, not automatic CEO escalation. Assess her findings against your authority.
+                    A production brief is planning evidence: playable builds, completed playtests and observed
+                    implementation evidence are future delivery gates, never prerequisites to staffing.
+                    Define their planned acceptance methods without claiming they already exist.
+                    Preserve real scope constraints and escalate only a specific decision beyond your authority.
+                    When Naomi requests Director resolution, answer the findings and request a revised brief
+                    for her independent review; do not accept the disputed draft unchanged. Resolve only business scope,
                     resource and approved-constraint questions. Creative detail belongs to Naomi; technical truth
                     belongs to the Technical Director and delivery forecasts belong to the Producer.
                     Do not rewrite the GDD, game mechanics, art or narrative direction. Preserve
@@ -78,7 +83,7 @@ public sealed partial class VideoGameDirectorAgent
                     """, new(AgentInteractionModes.Lead, "production-baseline-review",
                         ["approved-scope", "resources", "business-constraints"], ["portfolio-direction"],
                         AgentInteractionResponseContracts.DecisionAndNextDirective) { CounterpartRoleKey = "game-producer" })),
-                new ChatMessage(ChatRole.User, $"Accepted pitch:\n{pitch.Markdown}\nProducer review:\n{JsonSerializer.Serialize(review, PitchProtocol.Json)}\nShared draft:\n{revision.Content}\nConversation:\n{JsonSerializer.Serialize(request.Transcript.Select(x => new { x.SpeakerOrganizationUserId, x.Content }), PitchProtocol.Json)}")
+                new ChatMessage(ChatRole.User, $"Accepted pitch:\n{pitch.Markdown}\nCreative findings:\n{JsonSerializer.Serialize(creative, PitchProtocol.Json)}\nProducer review:\n{JsonSerializer.Serialize(review, PitchProtocol.Json)}\nShared draft:\n{revision.Content}\nConversation:\n{JsonSerializer.Serialize(request.Transcript.Select(x => new { x.SpeakerOrganizationUserId, x.Content }), PitchProtocol.Json)}")
             ], new ChatOptions { MaxOutputTokens = Math.Min(ResolvePitchOutputTokens(Settings), 8192) }, token);
             var result = PitchProtocol.ParseDirectorReview(response.Text);
             if (result is null || string.IsNullOrWhiteSpace(result.Guidance) || result.Guidance.Length > 16000 ||
@@ -94,7 +99,7 @@ public sealed partial class VideoGameDirectorAgent
         if (answer.RequiresOwner || repeated && !review.Ready)
             return await EscalatePitchAsync(request, state, review,
                 answer.OwnerQuestion ?? string.Join("\n", review.Questions), context, token);
-        var accept = answer.Accept && review.Ready && review.Questions.Count == 0 && !string.IsNullOrWhiteSpace(review.Rationale);
+        var accept = answer.Accept && !creative.RequiresDirector && review.Ready && review.Questions.Count == 0 && !string.IsNullOrWhiteSpace(review.Rationale);
         if (accept && revision.Status != "Accepted")
         {
             if (revision.Status != "Submitted") return AgentCoordinationTurnResult.Blocked("The ready brief must be submitted for business baseline review.");
