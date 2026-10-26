@@ -42,7 +42,7 @@ public sealed partial class VideoGameDirectorAgent
             {
                 var blocker = (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(blockerId), token)).SingleOrDefault();
                 if (blocker is not null)
-                    await WithdrawMisroutedBuildDecisionAsync(blocker, current.State, context, token);
+                    await StopMisroutedBuildTrackingAsync(blocker, current.State, context, token);
             }
             var outcome = item.CorrelationId!.StartsWith(ProductionCommitmentPrefix + "assets:", StringComparison.Ordinal)
                 ? await EnsureAssetStrategyAsync(current.State, current.Revision, item.Id, context, token)

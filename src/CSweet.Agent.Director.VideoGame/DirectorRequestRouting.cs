@@ -20,7 +20,8 @@ public sealed partial class VideoGameDirectorAgent
     internal async Task<bool> RouteApprovedProjectRequestAsync(CommunicationMessageReceivedEvent incoming, Guid chat, string text,
         GameDirectorOperatingState state, AgentTurnStreamWriter stream, AgentRuntimeContext context, CancellationToken token)
     {
-        if (!IsAuthoritativeManager(incoming, context.Identity) || state.AcceptedVision is not { } pitch ||
+        var leadReport = IsProjectLeadReport(incoming, state, context.BusinessId);
+        if ((!IsAuthoritativeManager(incoming, context.Identity) && !leadReport) || state.AcceptedVision is not { } pitch ||
             state.WorkstreamId is not { } project || state.TeamId is not { } team) return false;
         if (GameDirectorInteractionPolicy.IsDecisionReply(text))
         {
@@ -36,7 +37,7 @@ public sealed partial class VideoGameDirectorAgent
             await WakeProductionCommitmentAsync(state, decision.TypeKey, context, token);
             if (decision.TypeKey == VideoGameDecisionTypeKeys.ToolchainSelection)
             {
-                await WithdrawMisroutedBuildDecisionAsync(decision, state, context, token);
+                await StopMisroutedBuildTrackingAsync(decision, state, context, token);
                 await stream.CommitAsync("Your build-runner decision is recorded. I rechecked the retained build-readiness work; the Producer coordinates technical delivery and platform administration supplies the installed, certified runner. This is not creative work for Naomi, and the decision alone does not establish build capacity.", token);
             }
             else
@@ -57,6 +58,11 @@ public sealed partial class VideoGameDirectorAgent
             if (recipient is null)
             {
                 await stream.CommitAsync($"The accountable {route.Owner} lead has not been assigned to this approved project. I cannot substitute another role or claim work has started.", token);
+                return true;
+            }
+            if (leadReport && incoming.Context?.GetValueOrDefault(CommunicationMessageContextKeys.SenderOrganizationUserId) == recipient.Value.ToString("D"))
+            {
+                await stream.CommitAsync($"You remain accountable for {(route.Owner == "creative" ? "creative direction" : "delivery and technical coordination")} within the approved pitch. I resolve business scope and resource constraints through governed project decisions and the shared incident workflow.", token);
                 return true;
             }
             var outcome = route.Owner == "creative"
@@ -107,7 +113,7 @@ public sealed partial class VideoGameDirectorAgent
         return route;
     }
 
-    private static async Task WithdrawMisroutedBuildDecisionAsync(DecisionRecord decision, GameDirectorOperatingState state,
+    private static async Task StopMisroutedBuildTrackingAsync(DecisionRecord decision, GameDirectorOperatingState state,
         AgentRuntimeContext context, CancellationToken token)
     {
         var candidates = await context.Platform.Delegation.ReadAsync(new(), token);
@@ -115,6 +121,7 @@ public sealed partial class VideoGameDirectorAgent
         {
             var current = (await context.Platform.Delegation.ReadAsync(new(candidate.Id), token)).SingleOrDefault();
             if (current is not null && MisroutedBuildDecision(current, decision, state, context.Identity?.EmployeeId))
+                // SDK cancellation stops reporting. It never withdraws another owner's execution or canonical work.
                 await context.Platform.Delegation.CancelAsync(new(current.Id, current.Revision,
                     $"director-correct-build-route:{decision.Id:N}:{current.Id:N}"), token);
         }
@@ -124,10 +131,17 @@ public sealed partial class VideoGameDirectorAgent
         GameDirectorOperatingState state, string? director) =>
         decision.Status == DecisionStatuses.Decided && decision.SupersededByDecisionId is null &&
         decision.TypeKey == VideoGameDecisionTypeKeys.ToolchainSelection && !string.IsNullOrWhiteSpace(decision.Summary) &&
-        delegation.CoordinatorId.ToString("D") == director && delegation.RecipientId == state.CreativeDirectorEmployeeId &&
+        !delegation.TrackingCancelled && delegation.CoordinatorId.ToString("D") == director && delegation.RecipientId == state.CreativeDirectorEmployeeId &&
         delegation.WorkContext?.WorkstreamId == decision.WorkstreamId && decision.WorkstreamId == state.WorkstreamId &&
         (delegation.ExecutionStatus ?? delegation.Status) is "Active" or "Blocked" or "AwaitingAcknowledgement" &&
         Compact(delegation.Instruction).Contains(Compact(decision.Summary), StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsProjectLeadReport(CommunicationMessageReceivedEvent incoming, GameDirectorOperatingState state, string businessId) =>
+        Guid.TryParse(businessId, out var organization) && incoming.WorkContext is { } scope && scope.OrganizationId == organization &&
+        state.WorkstreamId.HasValue && scope.WorkstreamId == state.WorkstreamId && state.TeamId.HasValue && scope.TeamId == state.TeamId &&
+        incoming.Context?.GetValueOrDefault(CommunicationMessageContextKeys.SenderEmployeeType) == "Agent" &&
+        Guid.TryParse(incoming.Context.GetValueOrDefault(CommunicationMessageContextKeys.SenderOrganizationUserId), out var sender) &&
+        (sender == state.ProducerEmployeeId || sender == state.CreativeDirectorEmployeeId);
 
     private static string Compact(string text) => Regex.Replace(text.Trim(), @"\s+", " ");
 }

@@ -14,6 +14,7 @@ public sealed class NextStepReportingTests
     [InlineData(GameDirectorPhase.WorkstreamPlanPending, true, false, "share the accepted pitch")]
     [InlineData(GameDirectorPhase.DetailedDesign, true, false, "start the production-brief session")]
     [InlineData(GameDirectorPhase.DetailedDesign, true, true, "converge on the shared production brief")]
+    [InlineData(GameDirectorPhase.Oversight, true, true, "Naomi leads creative direction, and I oversee business scope and resources")]
     public void EveryPhaseNamesItsNextStep(GameDirectorPhase phase, bool producer, bool session, string expected)
     {
         var state = new GameDirectorOperatingState
