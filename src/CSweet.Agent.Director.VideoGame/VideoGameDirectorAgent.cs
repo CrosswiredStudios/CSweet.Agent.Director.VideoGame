@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.2.6";
+    public override string Version => "0.2.7";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1938,8 +1938,21 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             : ["web"];
         // Staffing and brief refinement continue before the Technical Director can assess
         // build requirements. Do not escalate runner capacity to the manager prematurely.
-        if (!state.SpecialistEmployeeIds.TryGetValue(VideoGameRoleKeys.TechnicalDirector, out var technicalDirectorId))
+        if (state.TeamId is not { } teamId) return (state, revision, false);
+        // The Producer hires technical staff after the leadership/design-package snapshot.
+        // Discover current authority through the SDK roster, including replacements and removals.
+        var roster = (await context.Platform.ReadTeamRosterAsync(new TeamRosterV2Request(teamId, null, 1, 100),
+            cancellationToken)).Team;
+        var technical = roster?.TeamId == teamId.ToString("D")
+            ? RoleTaxonomy.SelectAssignment(roster.Members,
+                new WorkAssignmentRequirements(VideoGameRoleKeys.TechnicalDirector, [], [],
+                    [WorkManagementCapabilityNames.ExecutionRun]))?.Teammate : null;
+        if (technical is null || !Guid.TryParse(technical.EmployeeId, out var technicalDirectorId))
             return (state, revision, false);
+        state = state with { SpecialistEmployeeIds = state.SpecialistEmployeeIds
+            .Where(x => x.Key != VideoGameRoleKeys.TechnicalDirector)
+            .Append(new KeyValuePair<string, Guid>(VideoGameRoleKeys.TechnicalDirector, technicalDirectorId))
+            .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal) };
         var catalog = await context.Platform.ReadEligibleToolchainsAsync(new ReadToolchainCatalogV2Request(
             VideoGameProfileKeys.ProductionV2, recipe, targets,
             ["scaffold", "import", "build", "test", "run", "capture", "package"]), cancellationToken);
