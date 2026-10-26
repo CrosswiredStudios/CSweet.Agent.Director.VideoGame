@@ -5,6 +5,24 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class CreativeReviewRecoveryTests
 {
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void Completed_old_review_cannot_wake_a_newer_Producer_draft(bool stale, bool expected)
+    {
+        var f = new Fixture("valid");
+        var input = f.Session.Turns[0].Artifact!.Payload.Deserialize<VideoGameDirectorAgent.CreativeReviewRequest>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var producer = Guid.NewGuid();
+        var parent = f.Session with { Id = input.ParentSessionId!.Value, Target = new(producer, Guid.NewGuid(), "Gabriel", "Producer"), Turns = [
+            new(Guid.NewGuid(), 1, producer, "Continue", "Ready", DateTimeOffset.UtcNow,
+                new("video-game.production.pitch-review.v1", "1.0", "pitch", 1, true,
+                    JsonSerializer.SerializeToElement(new { pitchDigest = "pitch", documentId = input.DocumentId,
+                        revisionId = stale ? Guid.NewGuid() : input.RevisionId, revisionSha256 = input.Sha256, ready = true,
+                        questions = Array.Empty<string>(), rationale = "Ready" }), "review")),
+            new(Guid.NewGuid(), 2, f.Session.Initiator.OrganizationUserId, "Blocked", "Awaiting Naomi's creative review of the exact production brief.", DateTimeOffset.UtcNow, null)] };
+        Assert.Equal(expected, VideoGameDirectorAgent.CanResumeCreativeParent(parent, input));
+    }
+
     [Fact]
     public async Task Attention_recovers_the_child_before_a_later_reconciliation_failure()
     {
