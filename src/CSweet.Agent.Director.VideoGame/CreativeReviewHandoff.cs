@@ -90,7 +90,7 @@ public sealed partial class VideoGameDirectorAgent
 
     internal static bool ValidCreativeReview(CreativeReviewResult review) =>
         !string.IsNullOrWhiteSpace(review.Summary) && review.Findings is not null && review.RequiredChanges is not null &&
-        (review.Disposition == "accepted" ? !review.RequiresDirector && review.Findings.Count == 0 && review.RequiredChanges.Count == 0 :
+        (review.Disposition == "accepted" ? !review.RequiresDirector && review.RequiredChanges.Count == 0 :
          review.Disposition == "changes-required" ? review.RequiredChanges.Count > 0 && (!review.RequiresDirector || review.Findings.Count > 0) :
          review.Disposition == "escalate" && review.RequiresDirector && review.Findings.Count > 0);
 
