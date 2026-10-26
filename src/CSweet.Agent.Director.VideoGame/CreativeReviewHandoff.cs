@@ -83,7 +83,7 @@ public sealed partial class VideoGameDirectorAgent
             !document.Revisions.Any(x => x.Id == initial.RevisionId && x.ContentSha256 == initial.Sha256))
             return AgentCoordinationTurnResult.Blocked("The creative review evidence is unavailable or outside the project.");
         await PitchProtocol.CachedAsync(ReviewKey(initial), context, () => Task.FromResult(receipt), token);
-        if (initial.ParentSessionId is { } parent) await ResumeCreativeParentAsync(parent, context, token);
+        if (initial.ParentSessionId is { } parent) await ResumeCreativeParentAsync(parent, initial, context, token);
         await QueueProducerDocumentationAsync(state, context, token);
         return AgentCoordinationTurnResult.Completed("Naomi's creative findings are recorded; business approval and delivery remain with their accountable owners.");
     }
@@ -94,12 +94,23 @@ public sealed partial class VideoGameDirectorAgent
          review.Disposition == "changes-required" ? review.RequiredChanges.Count > 0 && (!review.RequiresDirector || review.Findings.Count > 0) :
          review.Disposition == "escalate" && review.RequiresDirector && review.Findings.Count > 0);
 
-    private static async Task ResumeCreativeParentAsync(Guid parent, AgentRuntimeContext context, CancellationToken token)
+    private static async Task ResumeCreativeParentAsync(Guid parent, CreativeReviewRequest evidence, AgentRuntimeContext context, CancellationToken token)
     {
         var session = await context.Platform.Communication.ReadCoordinationAsync(parent, token);
-        if (session.Status == "Blocked" && session.Turns.LastOrDefault()?.Content.StartsWith("Awaiting Naomi's creative review", StringComparison.Ordinal) == true)
+        if (CanResumeCreativeParent(session, evidence))
             await context.Platform.Communication.ResumeCoordinationAsync(parent, session.Revision,
                 "Exact creative review evidence is available.", $"creative-review-resume:{parent:N}:{session.Revision}", token);
+    }
+
+    internal static bool CanResumeCreativeParent(AgentCoordinationSession parent, CreativeReviewRequest evidence)
+    {
+        if (parent.Id != evidence.ParentSessionId || parent.WorkContext?.WorkstreamId != evidence.WorkstreamId ||
+            parent.WorkContext.TeamId != evidence.TeamId || parent.Status != "Blocked" ||
+            parent.Turns.LastOrDefault()?.Content.StartsWith("Awaiting Naomi's creative review", StringComparison.Ordinal) != true) return false;
+        var current = parent.Turns.LastOrDefault(x => x.SpeakerOrganizationUserId == parent.Target.OrganizationUserId &&
+            x.Artifact?.Type == PitchProtocol.ReviewType)?.Artifact?.Payload.Deserialize<PitchReview>(PitchProtocol.Json);
+        return current is not null && current.DocumentId == evidence.DocumentId && current.RevisionId == evidence.RevisionId &&
+            current.RevisionSha256 == evidence.Sha256;
     }
 
     internal static async Task RecoverIncompleteCreativeReviewAsync(Guid sessionId, AgentRuntimeContext context, CancellationToken token)
@@ -135,7 +146,7 @@ public sealed partial class VideoGameDirectorAgent
             if (child.Status == "Blocked")
                 await RecoverIncompleteCreativeReviewAsync(child.Id, context, token);
             else if (await context.Platform.ReadOperatingStateAsync<CreativeReviewReceipt>(ReviewKey(input), token) is not null)
-                await ResumeCreativeParentAsync(parent, context, token);
+                await ResumeCreativeParentAsync(parent, input, context, token);
         }
     }
 }
