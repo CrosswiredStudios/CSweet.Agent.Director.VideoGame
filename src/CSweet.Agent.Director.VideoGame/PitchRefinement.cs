@@ -27,7 +27,7 @@ public sealed partial class VideoGameDirectorAgent
         if (ownerWait is not null) return ownerWait;
         var creative = await EnsureCreativeReviewAsync(state, document, revision, request.SessionId, context, token);
         if (creative is null) return AgentCoordinationTurnResult.Blocked("Awaiting Naomi's creative review of the exact production brief.");
-        if (creative.Disposition == "changes-required")
+        if (creative.Disposition == "changes-required" && !creative.RequiresDirector)
             return AgentCoordinationTurnResult.Continue("Naomi requires these creative corrections: " + creative.Summary,
                 PitchProtocol.Artifact(PitchProtocol.ReplyType, pitch.Digest, new PitchReply(pitch.Digest,
                     document.Id, revision.Id, revision.ContentSha256, false,

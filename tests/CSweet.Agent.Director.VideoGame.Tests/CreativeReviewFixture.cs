@@ -7,6 +7,6 @@ internal static class CreativeReviewFixture
             Request = new VideoGameDirectorAgent.CreativeReviewRequest(state.WorkstreamId!.Value, state.TeamId!.Value,
                 state.AcceptedVision!.ArtifactId, state.AcceptedVision.ArtifactRevisionId, state.AcceptedVision.ArtifactRevisionHash,
                 document, revision, hash, "Creative consistency"),
-            Review = requiresDirector ? new VideoGameDirectorAgent.CreativeReviewResult("escalate", "Director should resolve planning scope", ["A playable build was requested before staffing"], ["Define future acceptance evidence"], true) : new VideoGameDirectorAgent.CreativeReviewResult("accepted", "The creative pillars and player experience are preserved.", [], [], false)
+            Review = requiresDirector ? new VideoGameDirectorAgent.CreativeReviewResult("changes-required", "Director should resolve planning scope", ["A playable build was requested before staffing"], ["Define future acceptance evidence"], true) : new VideoGameDirectorAgent.CreativeReviewResult("accepted", "The creative pillars and player experience are preserved.", [], [], false)
         });
 }
