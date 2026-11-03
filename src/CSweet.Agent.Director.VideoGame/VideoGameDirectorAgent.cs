@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.2.9";
+    public override string Version => "0.3.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1511,6 +1511,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 null,
                 $"video-game-studio-plan:{acceptedVision.Digest}")
             {
+                WorkstreamId = state.ImportedProjectId,
                 TeamKey = "video-game-team",
                 TeamName = "Video Game Team",
                 TeamDescription = "The team accountable for delivering the accepted video game vision."
@@ -2154,7 +2155,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             // proposals retain their immutable identity; legacy heading extraction is recovery only.
             var projectVision = state.AcceptedVision ?? throw new InvalidOperationException("An accepted vision is required for project identity inference.");
             var projectIdentity = await InferProjectIdentityAsync(projectVision, context, cancellationToken);
-            workingTitle = projectIdentity.Title;
+            var importedProject = await ReadImportedGameAsync(state, context, cancellationToken);
+            workingTitle = importedProject?.Name ?? projectIdentity.Title;
             var metadata = new VideoGameProjectMetadataV1(
                 workingTitle,
                 state.ManagerPreferences.GenreConstraints.FirstOrDefault() ?? "To be confirmed during pre-production",
@@ -2199,6 +2201,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 [new EvidenceReference("artifact", projectVision.ArtifactId,
                     projectVision.ArtifactRevisionId, projectVision.ArtifactRevisionHash,
                     VideoGameArtifactTypeKeys.Vision, "Accepted")]);
+            if (importedProject is not null)
+                projectPlan = projectPlan with { ExistingProjectId = importedProject.Id, ExpectedProjectRevision = importedProject.ImportedProject!.ProjectRevision };
             var projectSession = await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(
                 producerId, "Propose the accepted game project", "Prepare a project proposal from the accepted direction for manager review.",
                 ["An exact project proposal is reviewed by its assigned manager"],
@@ -2936,6 +2940,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             ToolchainFeasibilityEvidence = desired.ToolchainFeasibilityEvidence ?? latest.ToolchainFeasibilityEvidence,
             WorkstreamProposalId = desired.WorkstreamProposalId ?? latest.WorkstreamProposalId,
             WorkstreamProposalSessionId = desired.WorkstreamProposalSessionId ?? latest.WorkstreamProposalSessionId,
+            ImportedProjectId = desired.ImportedProjectId ?? latest.ImportedProjectId,
             WorkingTitle = desired.WorkingTitle ?? latest.WorkingTitle,
             HandoffSessionId = desired.HandoffSessionId ?? latest.HandoffSessionId,
             DiscoveryInputs = latest.DiscoveryInputs.Concat(desired.DiscoveryInputs).Distinct(StringComparer.OrdinalIgnoreCase).TakeLast(40).ToList(),

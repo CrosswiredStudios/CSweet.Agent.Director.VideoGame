@@ -13,7 +13,7 @@ public sealed class GameDirectorOnboardingTests
         var managerId = Guid.NewGuid();
         var conversations = new[] { Guid.NewGuid(), Guid.NewGuid() };
         var stored = new Dictionary<string, AgentOperatingStateResponse>(StringComparer.Ordinal);
-        var runtime = new AgentTestRuntime()
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
                 (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(
@@ -83,7 +83,7 @@ public sealed class GameDirectorOnboardingTests
         AskUserRequest? onboardingQuestion = null;
         var completions = 0;
         var staffingProposals = 0;
-        var runtime = new AgentTestRuntime()
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
                 (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(
@@ -186,7 +186,7 @@ public sealed class GameDirectorOnboardingTests
         var messageId = Guid.NewGuid();
         var stored = new Dictionary<string, AgentOperatingStateResponse>(StringComparer.Ordinal);
         AskUserRequest? question = null;
-        var runtime = new AgentTestRuntime()
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
                 (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(
@@ -270,7 +270,7 @@ public sealed class GameDirectorOnboardingTests
             [projectStateKey] = initial
         };
         AskUserRequest? directionQuestion = null;
-        var runtime = new AgentTestRuntime()
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<AskUserRequest, UserQuestionResponse>(
                 PlatformCapabilities.UserInputRequest,
                 (request, _) =>

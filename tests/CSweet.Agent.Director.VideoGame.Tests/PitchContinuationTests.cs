@@ -231,7 +231,7 @@ public sealed class PitchContinuationTests
         {
             SetState(new() { IntakeConversationId = Chat, IntakeChoiceAsked = true, Phase = GameDirectorPhase.InvolvementConfirmation,
                 ManagerPreferences = new() { InvolvementMode = ManagerInvolvementMode.MilestoneReview, InvolvementWasExplicit = true } });
-            var runtime = new AgentTestRuntime()
+            var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
                 .RegisterCapability<CompleteAgentOnboardingRequest, CompleteAgentOnboardingResponse>(AgentLifecycleCapabilities.CompleteOnboarding,
                     (_, _) => Task.FromResult(new CompleteAgentOnboardingResponse(true, DateTimeOffset.UtcNow)))
                 .RegisterCapability<AskUserRequest, UserQuestionResponse>(PlatformCapabilities.UserInputRequest, (r, _) => {
