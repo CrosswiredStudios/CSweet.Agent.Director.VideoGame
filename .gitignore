@@ -403,3 +403,4 @@ FodyWeavers.xsd
 # Versioned source release notes
 !releases/
 !releases/*.md
+/.artifacts
