@@ -1,4 +1,10 @@
-# Video Game Director 0.3.0
+# Video Game Director 0.4.0
+
+Production reviews relay candidate-bound correction receipts with stable creative finding IDs. Existing concrete review findings can receive a bounded correction without inventing an owner decision; further correction requires evidenced progress and remains subject to the Producer's allowance. Blocked refinement retains a specific manager-recovery explanation.
+
+New compact briefs link one project-owned `video-game.production-sources.v1` document. Before creative review and acceptance, the Director verifies its exact project/team, original pitch/GDD identities, accepted revisions, hashes and full contents. Source acceptance certifies that provenance only; it does not amend scope. The source evidence and brief are accepted independently and included together in downstream planning. Existing source appendices remain supported.
+
+Update together with Producer 6.2.0 and Creative Director 4.1.0 through published releases and Installed Agents. No new permissions are requested.
 
 Approved-project requests retain the exact pitch and project context through SDK tracked delegation. Creative direction goes to the Creative Director; staffing, technical coordination and sprint delivery go to the Producer. Platform administration installs and certifies build capacity. Decision replies are reconciled with the recorded widget decision and never become creative assignments or new approvals.
 
@@ -7,7 +13,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.3.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 

@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.3.0";
+    public override string Version => "0.4.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -442,6 +442,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (request.Transcript.Any(x => x.Artifact?.Type == "video-game.project-foundation.request.v1"))
             return await ReviewProjectFoundationAsync(request, context, cancellationToken);
         var current = await ReadStateForCoordinationAsync(request, context, cancellationToken);
+        if (request.Counterpart.OrganizationUserId == current.State.ProducerEmployeeId &&
+            request.WorkContext?.WorkstreamId == current.State.WorkstreamId && request.WorkContext?.TeamId == current.State.TeamId &&
+            request.Transcript.Any(x => x.Artifact?.Type == CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.ReviewType) &&
+            request.Transcript.LastOrDefault(x => x.SpeakerOrganizationUserId == request.Counterpart.OrganizationUserId) is { Disposition: "Blocked", Artifact: null } blockedProducer)
+            return AgentCoordinationTurnResult.Blocked("Production brief refinement is blocked: " + blockedProducer.Content +
+                " The exact draft and review findings are retained for project-scoped manager recovery.");
         var latestArtifact = request.Transcript.LastOrDefault(x => x.Artifact is not null)?.Artifact;
         if (latestArtifact?.Type == CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.ReviewType)
         {
