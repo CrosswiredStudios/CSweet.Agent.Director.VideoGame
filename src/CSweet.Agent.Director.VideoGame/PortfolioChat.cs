@@ -15,6 +15,7 @@ public sealed partial class VideoGameDirectorAgent
         if (!IsAuthoritativeManager(incoming, context.Identity) || incoming.WorkContext?.WorkstreamId is not null) return false;
         var text = ExtractCurrentMessage(incoming.Message);
         if (await HandleReportingPreferenceAsync(incoming, chat, text, stream, context, token)) return true;
+        await RouteImportedGameAsync(incoming, chat, text, context, token);
         var index = await ReadPortfolioIndexAsync(context, token);
         var projects = index.Projects.Where(x => x.ConversationId == chat).ToArray();
         if (Regex.IsMatch(text, @"\b(start|create|develop|pitch|plan)\s+(?:a\s+)?(?:new|another|second|separate)\s+game\b", RegexOptions.IgnoreCase))

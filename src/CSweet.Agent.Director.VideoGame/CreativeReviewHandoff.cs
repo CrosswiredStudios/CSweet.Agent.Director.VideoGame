@@ -1,6 +1,7 @@
 using System.Text.Json;
 using CSweet.Agent.SDK;
 using CrosswiredStudios.VideoGame.PitchCollaboration;
+using CrosswiredStudios.VideoGame.ProductionReview;
 
 namespace CSweet.Agent.Director.VideoGame;
 
@@ -11,23 +12,31 @@ public sealed partial class VideoGameDirectorAgent
     internal const string InvalidCreativeReview = "Creative review did not return actionable, consistent findings.";
     private const string CreativeReviewIndexKey = "director-creative-review-parents";
     internal sealed record CreativeReviewRequest(Guid WorkstreamId, Guid TeamId, Guid PitchArtifactId, Guid PitchRevisionId,
-        string PitchSha256, Guid DocumentId, Guid RevisionId, string Sha256, string Purpose, Guid? ParentSessionId = null);
+        string PitchSha256, Guid DocumentId, Guid RevisionId, string Sha256, string Purpose, Guid? ParentSessionId = null)
+    {
+        public CollaborationDocumentReference? SourceEvidence { get; init; }
+    }
     internal sealed record CreativeReviewResult(string Disposition, string Summary, IReadOnlyList<string> Findings,
-        IReadOnlyList<string> RequiredChanges, bool RequiresDirector);
+        IReadOnlyList<string> RequiredChanges, bool RequiresDirector)
+    {
+        public string? ChecklistVersion { get; init; }
+        public IReadOnlyList<CreativeCheck> Checklist { get; init; } = [];
+        public IReadOnlyList<CreativeIssue> Issues { get; init; } = [];
+    }
     private sealed record CreativeReviewReceipt(CreativeReviewRequest Request, CreativeReviewResult Review);
     private sealed record CreativeReviewIndex(IReadOnlyList<Guid> Parents);
     private static string ReviewKey(CreativeReviewRequest input) => $"director-creative-review:{input.WorkstreamId:N}:{input.RevisionId:N}:{input.PitchRevisionId:N}";
 
     private async Task<CreativeReviewResult?> EnsureCreativeReviewAsync(GameDirectorOperatingState state,
         ArtifactDocument document, ArtifactRevision revision, Guid? parentSession,
-        AgentRuntimeContext context, CancellationToken token)
+        AgentRuntimeContext context, CancellationToken token, CollaborationDocumentReference? sources = null)
     {
         if (state.CreativeDirectorEmployeeId is not { } creative || state.AcceptedVision is not { } pitch ||
             state.WorkstreamId is not { } project || state.TeamId is not { } team)
             throw new InvalidOperationException("Creative acceptance requires the assigned Creative Director and approved project pitch.");
         var input = new CreativeReviewRequest(project, team, pitch.ArtifactId, pitch.ArtifactRevisionId,
             pitch.ArtifactRevisionHash, document.Id, revision.Id, revision.ContentSha256,
-            "Review creative consistency and player experience within the approved pitch.", parentSession);
+            "Review creative consistency and player experience within the approved pitch.", parentSession) { SourceEvidence = sources };
         var key = ReviewKey(input);
         var receipt = await context.Platform.ReadOperatingStateAsync<CreativeReviewReceipt>(key, token);
         if (receipt is not null) return receipt.Payload.Review;
@@ -46,7 +55,8 @@ public sealed partial class VideoGameDirectorAgent
             pitch.ConversationId, pitch.ChatTurnId, pitch.MessageId, key + ":session",
             CollaborationActions.WithDocuments(new(CreativeReviewRequestType, "1.0", input.Sha256, 1, true,
                 JsonSerializer.SerializeToElement(input, ProjectApprovalJson)),
-                [new(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash), new(document.Id, revision.Id, revision.ContentSha256)]))
+                sources is null ? [new(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash), new(document.Id, revision.Id, revision.ContentSha256)]
+                    : [new(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash), new(document.Id, revision.Id, revision.ContentSha256), sources]))
             { WorkContext = ProjectWorkContext(state, context, document.Id) }, token);
         return null;
     }
@@ -90,6 +100,8 @@ public sealed partial class VideoGameDirectorAgent
 
     internal static bool ValidCreativeReview(CreativeReviewResult review) =>
         !string.IsNullOrWhiteSpace(review.Summary) && review.Findings is not null && review.RequiredChanges is not null &&
+        (review.ChecklistVersion is null || review.ChecklistVersion == CreativeChecklist.Version &&
+            CreativeChecklist.Valid(review.Checklist, review.Issues) && CreativeChecklist.MatchesDisposition(review.Disposition, review.RequiresDirector, review.RequiredChanges, review.Issues)) &&
         (review.Disposition == "accepted" ? !review.RequiresDirector && review.RequiredChanges.Count == 0 :
          review.Disposition == "changes-required" ? review.RequiredChanges.Count > 0 && (!review.RequiresDirector || review.Findings.Count > 0) :
          review.Disposition == "escalate" && review.RequiresDirector && review.Findings.Count > 0);

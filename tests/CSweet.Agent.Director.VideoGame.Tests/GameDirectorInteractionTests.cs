@@ -22,7 +22,7 @@ public sealed class GameDirectorInteractionTests
         };
         AddPersonalTodoItemRequest? added = null;
         var calls = 0;
-        var runtime = new AgentTestRuntime()
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow)))
             .RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
@@ -56,7 +56,7 @@ public sealed class GameDirectorInteractionTests
     [Fact]
     public async Task ModelStreamingPublishesReasoningAndDraftToTheConversationTurn()
     {
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())));
         var turnId = Guid.NewGuid();
         string response;
@@ -155,7 +155,7 @@ public sealed class GameDirectorInteractionTests
                 stateKey, workstreamId, conversationId, null, null, "Accepted game",
                 GameDirectorPhase.HighLevelAccepted, DateTimeOffset.UtcNow)]
         };
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
@@ -183,7 +183,7 @@ public sealed class GameDirectorInteractionTests
     [Fact]
     public async Task UnknownPersonalCardIsBlockedWithActionableReason()
     {
-        var context = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var context = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>()))).CreateContext();
         var item = PersonalItem("Unknown", "unknown.v1", Guid.NewGuid());
 
@@ -217,7 +217,7 @@ public sealed class GameDirectorInteractionTests
         AddPersonalTodoItemRequest? captured = null;
         PersonalTodoItem? legacyCard = null;
         var requeued = 0;
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
@@ -297,7 +297,7 @@ public sealed class GameDirectorInteractionTests
     [Fact]
     public async Task PitchWorkAcknowledgementImmediatelySetsHumanExpectations()
     {
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())));
         await using var stream = runtime.CreateContext().CreateTurnStream(
             Guid.NewGuid().ToString("D"), Guid.NewGuid());
@@ -352,7 +352,7 @@ public sealed class GameDirectorInteractionTests
                 VideoGameDirectorAgent.PortfolioStateKey, portfolio)
         };
         ResourceChangeProposalRequest? proposal = null;
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())))
             .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(
                 PlatformCapabilities.AgentOperatingStateRead,
@@ -458,7 +458,7 @@ public sealed class GameDirectorInteractionTests
         var requeues = new List<RequeuePersonalTodoItemRequest>();
         AddPersonalTodoItemRequest? staffingTodoRequest = null;
         PersonalTodoItem? staffingTodo = null;
-        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
+        var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, OrganizationSnapshotResponse>(PlatformCapabilities.OrganizationSnapshotRead, (_, _) => Task.FromResult(new OrganizationSnapshotResponse(Guid.NewGuid(), "Active", [], [], [], [], [], DateTimeOffset.UtcNow))).RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1",
                 (_, _) => Task.FromResult(JsonSerializer.SerializeToElement(Array.Empty<object>())))
             .RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read,
                 (_, _) => Task.FromResult(new PersonalTodoDirectory(

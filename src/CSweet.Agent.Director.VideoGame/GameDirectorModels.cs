@@ -95,6 +95,7 @@ public sealed record GameDirectorPortfolioIndex
 
 public sealed record GameDirectorOperatingState
 {
+    public Guid? ImportedProjectId { get; init; }
     public Guid? IntakeId { get; init; }
     public Guid? IntakeConversationId { get; init; }
     public Guid? WorkstreamId { get; init; }

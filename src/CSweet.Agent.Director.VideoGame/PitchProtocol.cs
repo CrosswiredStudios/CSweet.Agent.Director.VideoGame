@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using CSweet.Agent.SDK;
 using CrosswiredStudios.VideoGame.Contracts;
+using CrosswiredStudios.VideoGame.ProductionReview;
 
 namespace CrosswiredStudios.VideoGame.PitchCollaboration;
 
@@ -16,12 +17,15 @@ internal sealed record PitchBrief(GameVisionBrief Vision, Guid PitchArtifactId, 
 internal sealed record PitchReview(string PitchDigest, Guid DocumentId, Guid RevisionId, string RevisionSha256,
     bool Ready, IReadOnlyList<string> Questions, string Rationale)
 {
-    public IReadOnlyList<CollaborationDocumentReference> DocumentReferences => [new(DocumentId, RevisionId, RevisionSha256)];
+    public CollaborationDocumentReference? SourceEvidence { get; init; }
+    public IReadOnlyList<CollaborationDocumentReference> DocumentReferences => SourceEvidence is null
+        ? [new(DocumentId, RevisionId, RevisionSha256)] : [new(DocumentId, RevisionId, RevisionSha256), SourceEvidence];
 }
 internal sealed record PitchReply(string PitchDigest, Guid DocumentId, Guid RevisionId, string RevisionSha256,
     bool Accepted, string Guidance, string SuggestedMarkdown)
 {
     public Guid? OwnerDecisionId { get; init; }
+    public ProductionCorrection? Correction { get; init; }
 }
 internal sealed record ProducerReview(bool Ready, IReadOnlyList<string> Questions, string Rationale, string DraftMarkdown);
 internal sealed record DirectorReview(bool Accept, string Guidance, string SuggestedMarkdown,
