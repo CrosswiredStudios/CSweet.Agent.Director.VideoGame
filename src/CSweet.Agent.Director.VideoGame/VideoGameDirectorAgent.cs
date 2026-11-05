@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.4.2";
+    public override string Version => "0.4.3";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -619,6 +619,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var currentMessage = ExtractCurrentMessage(incoming.Message);
         var isManager = IsAuthoritativeManager(incoming, context.Identity);
         var inboundDisposition = GameDirectorInteractionPolicy.Classify(currentMessage);
+
+        // Approved project authority is recorded in the accepted pitch and lead assignment.
+        // An intake phase cursor must not reject an operational report from that assigned lead.
+        if (!isManager && IsProjectLeadReport(incoming, state, context.BusinessId) &&
+            await RouteApprovedProjectRequestAsync(incoming, conversationId, currentMessage,
+                state, stream, context, cancellationToken)) return;
 
         if (!isManager && state.Phase != GameDirectorPhase.Oversight)
         {

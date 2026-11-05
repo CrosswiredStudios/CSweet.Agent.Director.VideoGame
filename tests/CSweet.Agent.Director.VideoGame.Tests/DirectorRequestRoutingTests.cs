@@ -141,10 +141,12 @@ public sealed class DirectorRequestRoutingTests
         Assert.Equal(expected, VideoGameDirectorAgent.IsProjectLeadReport(incoming, j.State, j.Organization.ToString()));
     }
 
-    [Fact]
-    public async Task AuthenticatedProducerBlockerCreatesDirectorFollowThroughWithoutForwardingItToTheCeo()
+    [Theory]
+    [InlineData(GameDirectorPhase.Oversight)]
+    [InlineData(GameDirectorPhase.Discovery)]
+    public async Task AuthenticatedProducerBlockerCreatesDirectorFollowThroughWithoutForwardingItToTheCeo(GameDirectorPhase phase)
     {
-        var j = new Journey(); await j.Configure("director"); var state = j.State with { Phase = GameDirectorPhase.Oversight };
+        var j = new Journey(); await j.Configure("director"); var state = j.State with { Phase = phase };
         AddPersonalTodoItemRequest? added = null;
         j.Runtime.RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
             (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
