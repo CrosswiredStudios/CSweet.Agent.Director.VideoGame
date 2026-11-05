@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.4.3";
+    public override string Version => "0.4.4";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -582,6 +582,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         }
         if (!IsAuthoritativeManager(incoming, context.Identity))
         {
+            if (await RecoverUnscopedDeliveryReportAsync(incoming, conversationId, stream, context, cancellationToken)) return;
             var kickoffs = await FindProducerKickoffsAsync(incoming, context, cancellationToken);
             if (kickoffs.Count > 0)
             {

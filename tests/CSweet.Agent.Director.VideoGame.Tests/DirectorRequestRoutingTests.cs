@@ -188,6 +188,46 @@ public sealed class DirectorRequestRoutingTests
                 WorkContext = new(j.Organization, j.Project, j.Team, null, null, null, null, Guid.NewGuid(), null, null) };
 
     [Theory]
+    [InlineData("valid", true)] [InlineData("human", false)] [InlineData("wrong-assignment", false)]
+    [InlineData("not-approved", false)] [InlineData("completed", false)] [InlineData("wrong-manager", false)]
+    [InlineData("ambiguous", false)] [InlineData("wrong-ticket", false)] [InlineData("status-only", false)]
+    public async Task Unscoped_delivery_report_requires_one_current_blocked_ticket_and_the_recorded_producer(string scenario, bool accepted)
+    {
+        var j = new Journey(); var state = j.State;
+        if (scenario == "wrong-assignment") state = state with { ProducerEmployeeId = Guid.NewGuid() };
+        if (scenario == "not-approved") state = state with { AcceptedVision = null };
+        var board = new WorkBoardSummary(Guid.NewGuid(), "Game", "", false, false, 1, []) {
+            ManagerOrganizationUserId = j.Producer, WorkstreamId = j.Project, TeamId = j.Team };
+        var boards = scenario == "ambiguous" ? new[] { board, board with { Id = Guid.NewGuid() } } : [board];
+        var ticket = Empty<WorkItem>() with { Id = Guid.NewGuid(), Identifier = scenario == "wrong-ticket" ? "VGDEMO-220" : "VGDEMO-22",
+            Status = scenario == "completed" ? "Completed" : "Blocked" };
+        AddPersonalTodoItemRequest? added = null;
+        j.Runtime.RegisterCapability<WorkBoardListRequest, IReadOnlyList<WorkBoardSummary>>(WorkBoardCapabilities.Read,
+            (_, _) => Task.FromResult<IReadOnlyList<WorkBoardSummary>>(boards))
+            .RegisterCapability<WorkBoardReference, WorkBoardDetail>(WorkItemCapabilities.Read,
+                (r, _) => Task.FromResult(new WorkBoardDetail(boards.Single(b => b.Id == r.BoardId) with {
+                    ManagerOrganizationUserId = scenario == "wrong-manager" ? Guid.NewGuid() : j.Producer }, [], [ticket])))
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
+                    new Dictionary<string, string>(), [], "test", [], Guid.NewGuid(), JsonSerializer.SerializeToElement(state), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))))
+            .RegisterCapability<AddPersonalTodoItemRequest, PersonalTodoItem>(PersonalTodoCapabilities.Add,
+                (r, _) => { added = r; return Task.FromResult(Empty<PersonalTodoItem>() with { Id = Guid.NewGuid() }); });
+        var incoming = LeadReport(j, scenario == "status-only" ? "Status of VGDEMO-22?" :
+            "VGDEMO-22 has been blocked. Retry ticket VGDEMO-22 after investigating the operation mismatch.") with { WorkContext = null };
+        if (scenario == "human") incoming = incoming with { Context = new Dictionary<string, string>(incoming.Context!) {
+            [CommunicationMessageContextKeys.SenderEmployeeType] = "Human" } };
+        await using var stream = j.Context.CreateTurnStream(j.Chat.ToString(), incoming.TurnId, 1);
+        Assert.Equal(accepted, await j.Agent.RecoverUnscopedDeliveryReportAsync(incoming, j.Chat, stream, j.Context, default));
+        Assert.Equal(accepted, added is not null);
+        if (added is null) return;
+        Assert.Equal(j.Project, added.WorkContext!.WorkstreamId); Assert.Equal(j.Team, added.WorkContext.TeamId);
+        Assert.Equal(incoming.MessageId, added.SourceMessageId);
+        Assert.Contains(incoming.MessageId.ToString("N"), added.IdempotencyKey);
+        Assert.Contains("independent QA", added.Description);
+        Assert.Null(incoming.WorkContext); // Never fabricate a broker-authenticated incoming context.
+    }
+
+    [Theory]
     [InlineData("match", true)] [InlineData("recipient", false)] [InlineData("coordinator", false)]
     [InlineData("project", false)] [InlineData("summary", false)] [InlineData("terminal", false)]
     [InlineData("pending", false)] [InlineData("superseded", false)] [InlineData("tracking-stopped", false)]
