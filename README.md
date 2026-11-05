@@ -1,4 +1,4 @@
-# Video Game Director 0.4.1
+# Video Game Director 0.4.2
 
 Attention reviews recover the retained legacy four-draft Producer block after an upgrade. Recovery verifies current participants, project/team, accepted pitch/GDD, latest submitted brief and exact independent findings; respects pending/paused decisions; journals one idempotent resume; and relays a bounded correction in the resumed Director callback. Already structured or exhausted corrections remain subject to their existing limits. A queued resume rechecks the current draft before acting.
 
@@ -15,7 +15,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.1** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.2** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -66,7 +66,7 @@ and the shared Creative Director/Producer proposal. Specialist staffing follows 
 requirements and the Producer's planning, rather than an unconditional catalog roster.
 
 The platform's `ExecutiveDecisionService.CreateAsync` supersedes an agent's previous ordinary
-question in the same conversation. Releases 0.1.0–0.1.2 asked reporting immediately after
+question in the same conversation. Releases 0.1.0â€“0.1.2 asked reporting immediately after
 collaboration, superseding discovery before the CEO could answer. `ContinueDirectorOnboardingAsync`
 repairs that saved state once during attention review or after the last reporting answer.
 It preserves completed reporting preferences, lets an unfinished reporting choice complete,
@@ -81,10 +81,16 @@ manual database repair is needed.
 
 ## Identity
 
-Marcus Vale is the Video Game Director. His portrait uses the roster’s softly sculpted clay-like style, with a midnight-teal blazer and teal-gray background. Branding assets live in `assets/branding/`; the manifest links to published repository assets and the app includes an offline copy.
+Marcus Vale is the Video Game Director. His portrait uses the rosterâ€™s softly sculpted clay-like style, with a midnight-teal blazer and teal-gray background. Branding assets live in `assets/branding/`; the manifest links to published repository assets and the app includes an offline copy.
 
 Director follow-through resolves business scope, resources and portfolio priorities. Authenticated project leads use SDK interactions; unsupported raw coordination cannot create a CEO decision. SDK delegation cancellation stops tracking only and does not withdraw another owner's executable work.
 
 ## Existing project onboarding
 
 Recognize explicitly selected imported games from current owner-accepted project profiles. Retain the imported project ID through the Director/Producer foundation and approved staffing handoff. Preserve normal exact pitch, creative-review, staffing and project-setup decisions; do not create a duplicate game project.
+
+## Planning and runner flow (0.4.2)
+
+Rename the build-runner choice to Authorize build-runner setup and explain that recording direction does not install or certify capacity. Link setup follow-through to Build runners with the exact business selected. Pausing keeps build work paused; custom answers do not imply setup authorization.
+
+Existing readiness discovery still checks actual certified provider/image eligibility before reporting capacity. Platform administration must install the provider and review/certify the exact environment. The matching C-Sweet UI change recognizes authorized business deep links; no new agent capabilities or grants are requested.

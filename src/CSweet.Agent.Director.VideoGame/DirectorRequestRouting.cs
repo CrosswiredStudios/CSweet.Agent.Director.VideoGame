@@ -38,7 +38,7 @@ public sealed partial class VideoGameDirectorAgent
             if (decision.TypeKey == VideoGameDecisionTypeKeys.ToolchainSelection)
             {
                 await StopMisroutedBuildTrackingAsync(decision, state, context, token);
-                await stream.CommitAsync("Your build-runner decision is recorded. I rechecked the retained build-readiness work; the Producer coordinates technical delivery and platform administration supplies the installed, certified runner. This is not creative work for Naomi, and the decision alone does not establish build capacity.", token);
+                await stream.CommitAsync(BuildRunnerFollowThrough(decision.SelectedOptionId, Guid.Parse(context.BusinessId)), token);
             }
             else
                 await stream.CommitAsync($"The existing decision is recorded as '{decision.SelectedOptionId}'. I rechecked its project follow-through; no duplicate approval or creative assignment was created.", token);
@@ -49,7 +49,7 @@ public sealed partial class VideoGameDirectorAgent
         {
             await QueueProductionCommitmentsAsync(state, context, token);
             await WakeProductionCommitmentAsync(state, VideoGameDecisionTypeKeys.ToolchainSelection, context, token);
-            await stream.CommitAsync("Build-runner setup belongs to platform administration and technical delivery. I retained the project build-readiness work; the Producer coordinates the Technical Director. Naomi remains responsible for creative direction. Installation and certification must be verified before build capacity is reported ready.", token);
+            await stream.CommitAsync("Build-runner setup belongs to platform administration and technical delivery. I retained the project build-readiness work. Open [Build runners](/settings/toolchains) to install a provider and certify the exact provider/image combination. Installation and certification must be verified before build capacity is ready. Approval alone does not schedule setup or establish build capacity.", token);
             return true;
         }
         if (route.Owner is "creative" or "delivery")
@@ -83,6 +83,16 @@ public sealed partial class VideoGameDirectorAgent
             await stream.CommitAsync(await GenerateDirectorAnswerAsync(text, state, incoming.MessageId, stream, context, token), token);
         return true;
     }
+
+    internal static string BuildRunnerFollowThrough(string? option, Guid business) => option == "pause"
+        ? "Build work remains paused as requested. Planning can continue; no runner setup or build was started."
+        : option == "restore-capacity"
+            ? $"Build-runner setup is authorized; this decision does not establish build capacity. It does not install or certify a runner. " +
+              $"[Open Build runners for this business](/settings/toolchains?businessId={business:D}). " +
+              "Install the managed build provider if missing, review the provider, environment and Office image, then start certification. " +
+              "The retained build-readiness work will recheck current eligibility on attention review. " +
+              "The Producer coordinates technical delivery; platform administration supplies runner capacity."
+            : "Your build-runner direction is recorded. Existing build-readiness work will recheck current capacity; this answer does not install or certify a runner.";
 
     private async Task<DirectorRequestRoute> ClassifyDirectorRequestAsync(string text, AgentRuntimeContext context, CancellationToken token)
     {

@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.4.1";
+    public override string Version => "0.4.2";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1885,10 +1885,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 var blocker = await context.Platform.RequestDecisionAsync(new DecisionRequest(
                     workstreamId,
                     VideoGameDecisionTypeKeys.ToolchainSelection,
-                    BuildUnavailableToolchainQuestion(recipe),
+                    BuildUnavailableToolchainQuestion(recipe) + $"\n\nSetup requires platform administration: [Open Build runners](/settings/toolchains?businessId={context.BusinessId:D}). The decision records direction; it does not install or certify the runner.",
                     "unsupported-or-uncertified-toolchain",
                     [
-                        new DecisionOption("restore-capacity", "Enable the build runner", "Keep the approved game engine. Install or enable its managed build adapter, certify it on a compatible Office image, and retry the build check."),
+                        new DecisionOption("restore-capacity", "Authorize build-runner setup", "Authorize platform administration to install or enable the provider and certify an Office image. This answer does not run setup; open Build runners to complete it."),
                         new DecisionOption("pause", "Pause build work", "Continue planning, but do not run builds or previews until approved build capacity exists.")
                     ],
                     "restore-capacity",
