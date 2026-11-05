@@ -1,4 +1,6 @@
-# Video Game Director 0.4.0
+# Video Game Director 0.4.1
+
+Attention reviews recover the retained legacy four-draft Producer block after an upgrade. Recovery verifies current participants, project/team, accepted pitch/GDD, latest submitted brief and exact independent findings; respects pending/paused decisions; journals one idempotent resume; and relays a bounded correction in the resumed Director callback. Already structured or exhausted corrections remain subject to their existing limits. A queued resume rechecks the current draft before acting.
 
 Production reviews relay candidate-bound correction receipts with stable creative finding IDs. Existing concrete review findings can receive a bounded correction without inventing an owner decision; further correction requires evidenced progress and remains subject to the Producer's allowance. Blocked refinement retains a specific manager-recovery explanation.
 
@@ -13,7 +15,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.1** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 

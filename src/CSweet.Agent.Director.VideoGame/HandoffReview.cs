@@ -12,6 +12,7 @@ public sealed partial class VideoGameDirectorAgent
         // The child review has its own durable recovery. Waiting for its result is not
         // a failed attention cycle; unrelated oversight and discovery must still run.
         if (session.Status == "Blocked" && session.FinalSummary?.StartsWith("Awaiting Naomi's creative review", StringComparison.Ordinal) == true) return;
+        if (await RecoverProducerCorrectionAsync(state, session, context, token)) return;
         RequireProgressingHandoff(session, "Producer handoff");
     }
 
