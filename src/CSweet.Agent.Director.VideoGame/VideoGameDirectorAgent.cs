@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.4.4";
+    public override string Version => "0.4.5";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -2116,6 +2116,19 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (!state.WorkstreamId.HasValue && state.WorkstreamProposalSessionId is { } sessionId)
         {
             var session = await context.Platform.Communication.ReadCoordinationAsync(sessionId, cancellationToken);
+            // A proposal receipt can outlive a failed final response. Recover it before
+            // considering submission recovery; never create another proposal to replace it.
+            if (!state.WorkstreamProposalId.HasValue)
+            {
+                var submitted = session.Turns.LastOrDefault(x => x.SpeakerOrganizationUserId == producerId &&
+                    x.Artifact?.Type == "video-game.project-foundation.proposal.v1")?.Artifact;
+                if (submitted?.Payload.TryGetProperty("proposalId", out var submittedId) == true && submittedId.TryGetGuid(out var id))
+                {
+                    var recovered = await SaveStateAsync(state with { WorkstreamProposalId = id, ProposalWait = null }, revision,
+                        reviewId, $"project-foundation-proposal:{id:N}", context, cancellationToken);
+                    state = recovered.State; revision = recovered.Revision;
+                }
+            }
             // A response failure can follow an already committed approval. Recover that exact
             // project before treating the collaboration status as a reason to stop delivery.
             if (session.Status is "Failed" or "Blocked" or "Cancelled" && state.WorkstreamProposalId is { } committedProposalId)
@@ -2129,13 +2142,20 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     if (created is not null)
                     {
                         var recovered = await SaveStateAsync(state with { WorkstreamId = createdId, TeamId = teamId,
-                            WorkingTitle = created.Workstream.Name, Phase = GameDirectorPhase.ProjectSetup }, null,
+                            WorkingTitle = created.Workstream.Name, Phase = GameDirectorPhase.ProjectSetup, ProposalWait = null }, null,
                             reviewId, $"workstream-state:{createdId:N}", context, cancellationToken);
                         return (recovered.State, recovered.Revision, true);
                     }
                 }
             }
-            RequireProgressingHandoff(session, "Project proposal");
+            if (session.Status is "Failed" or "Blocked" or "Cancelled")
+                return await WaitForProjectProposalAsync(state, revision, session, reviewId, context, cancellationToken);
+            if (state.ProposalWait is { Reason.Length: > 0 })
+            {
+                var cleared = await SaveStateAsync(state with { ProposalWait = new(session.Id, session.Revision, session.Status, "") }, revision, reviewId,
+                    $"project-proposal-active:{session.Id:N}:{session.Revision}", context, cancellationToken);
+                state = cleared.State; revision = cleared.Revision;
+            }
             if (!state.WorkstreamProposalId.HasValue)
             {
                 var submitted = session.Turns.LastOrDefault(x => x.SpeakerOrganizationUserId == producerId &&
@@ -2149,7 +2169,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     revision = recovered.Revision;
                 }
                 else if (session.Status == "Completed")
-                    throw new InvalidOperationException("The Producer project-proposal collaboration completed without a proposal ID. Manager review is required.");
+                    return await SaveProjectProposalWaitAsync(state, revision, session, reviewId,
+                        "The completed proposal collaboration has no proposal receipt. I must reconcile its result before project setup can continue.", context, cancellationToken);
                 else return (state, revision, false);
             }
         }
@@ -2236,7 +2257,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             };
             var saved = await SaveStateAsync(state, revision, reviewId,
                 $"workstream-proposed:{projectVision.Digest}", context, cancellationToken);
-            RequireProgressingHandoff(projectSession, "Project proposal");
+            if (projectSession.Status is "Failed" or "Blocked" or "Cancelled")
+                return await WaitForProjectProposalAsync(saved.State, saved.Revision, projectSession, reviewId, context, cancellationToken);
             return (saved.State, saved.Revision, false);
         }
 
@@ -2918,7 +2940,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         }
     }
 
-    private static GameDirectorOperatingState MergeConcurrentState(
+    internal static GameDirectorOperatingState MergeConcurrentState(
         GameDirectorOperatingState latest,
         GameDirectorOperatingState desired)
     {
@@ -2957,6 +2979,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             ToolchainFeasibilityEvidence = desired.ToolchainFeasibilityEvidence ?? latest.ToolchainFeasibilityEvidence,
             WorkstreamProposalId = desired.WorkstreamProposalId ?? latest.WorkstreamProposalId,
             WorkstreamProposalSessionId = desired.WorkstreamProposalSessionId ?? latest.WorkstreamProposalSessionId,
+            ProposalWait = desired.WorkstreamId.HasValue ? null :
+                latest.ProposalWait is { } latestWait && (desired.ProposalWait is null ||
+                    latestWait.SessionId == desired.ProposalWait.SessionId && latestWait.SessionRevision > desired.ProposalWait.SessionRevision)
+                    ? latestWait : desired.ProposalWait,
             ImportedProjectId = desired.ImportedProjectId ?? latest.ImportedProjectId,
             WorkingTitle = desired.WorkingTitle ?? latest.WorkingTitle,
             HandoffSessionId = desired.HandoffSessionId ?? latest.HandoffSessionId,

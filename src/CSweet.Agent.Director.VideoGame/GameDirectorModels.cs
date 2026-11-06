@@ -129,6 +129,7 @@ public sealed record GameDirectorOperatingState
         new Dictionary<string, Guid>(StringComparer.Ordinal);
     public Guid? WorkstreamProposalId { get; init; }
     public Guid? WorkstreamProposalSessionId { get; init; }
+    public ProjectProposalWait? ProposalWait { get; init; }
     public string? WorkingTitle { get; init; }
     public Guid? HandoffSessionId { get; init; }
     public Guid? AssetStrategyDecisionId { get; init; }
@@ -144,6 +145,8 @@ public sealed record GameDirectorOperatingState
     public IReadOnlyList<string> NotificationFingerprints { get; init; } = [];
     public DateOnly? LastDailyReportDate { get; init; }
 }
+
+public sealed record ProjectProposalWait(Guid SessionId, long SessionRevision, string Status, string Reason);
 
 internal sealed record SemanticArtifactReview(
     string Disposition,

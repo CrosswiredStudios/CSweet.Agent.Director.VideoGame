@@ -11,7 +11,8 @@ namespace CSweet.Agent.Director.VideoGame;
 /// </summary>
 internal static class GameDirectorNextStep
 {
-    public static string Describe(GameDirectorOperatingState state) => state.Phase switch
+    public static string Describe(GameDirectorOperatingState state) => state.WorkstreamId is null && state.ProposalWait is { Reason.Length: > 0 } wait
+        ? wait.Reason : state.Phase switch
     {
         GameDirectorPhase.Discovery or GameDirectorPhase.InvolvementConfirmation =>
             "the CEO provides initial game direction",

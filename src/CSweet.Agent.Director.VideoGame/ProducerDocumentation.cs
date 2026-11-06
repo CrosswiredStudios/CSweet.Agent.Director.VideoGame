@@ -63,6 +63,8 @@ public sealed partial class VideoGameDirectorAgent
             return PersonalTodoResult.Blocked("The exact CEO-approved pitch is required for the Producer handoff.");
         await ReconcileAsync(item.Id, context, token, state, current.Revision);
         var latest = await ReadStateForTodoAsync(item, context, token);
+        if (latest.State.ProposalWait is { Reason.Length: > 0 } wait && latest.State.WorkstreamId is null)
+            return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(15), wait.Reason);
         return latest.State.HandoffSessionId.HasValue
             ? PersonalTodoResult.Completed("Shared the exact accepted pitch and GDD in the Producer collaboration for scope clarification and staffing discovery.")
             : PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), "Documentation is ready; waiting for project setup to permit the scoped Producer handoff.");

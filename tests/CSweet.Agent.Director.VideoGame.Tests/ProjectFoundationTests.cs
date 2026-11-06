@@ -6,20 +6,25 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class ProjectFoundationTests
 {
-    [Fact]
-    public async Task FailedReplyAfterApprovalRecoversTheExactCreatedProjectWithoutReplayingApproval()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FailedReplyAfterApprovalRecoversTheExactCreatedProjectWithoutReplayingApproval(bool proposalAlreadyIndexed)
     {
         var team = Guid.NewGuid(); var producer = Guid.NewGuid(); var director = Guid.NewGuid();
         var sessionId = Guid.NewGuid(); var proposalId = Guid.NewGuid(); var projectId = Guid.NewGuid();
         var state = new GameDirectorOperatingState { TeamId = team, ProducerEmployeeId = producer,
-            WorkstreamProposalSessionId = sessionId, WorkstreamProposalId = proposalId,
+            WorkstreamProposalSessionId = sessionId, WorkstreamProposalId = proposalAlreadyIndexed ? proposalId : null,
             AcceptedVision = new(1, "digest", "# Game", Guid.NewGuid(), Guid.NewGuid(), "hash",
                 Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow) };
         var runtime = new AgentTestRuntime()
             .RegisterCapability<JsonElement, AgentCoordinationSession>("communication.coordination.read.v1", (_, _) => Task.FromResult(
                 new AgentCoordinationSession(sessionId, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
                     new(director, Guid.NewGuid(), "Director", "Initiator"), new(producer, Guid.NewGuid(), "Producer", "Target"),
-                    "Project", "Create", [], "Failed", 5, 3, director, false, "Response interrupted", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [])))
+                    "Project", "Create", [], "Failed", 5, 3, director, false, "Response interrupted", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+                    [new(Guid.NewGuid(), 1, producer, "Continue", "Submitted", DateTimeOffset.UtcNow,
+                        new("video-game.project-foundation.proposal.v1", "1.0", "digest", 1, true,
+                            JsonSerializer.SerializeToElement(new { proposalId }), "receipt"))])))
             .RegisterCapability<JsonElement, JsonElement>("platform.project-approval.read.v1", (r, _) => {
                 Assert.Equal(proposalId, r.GetProperty("proposalId").GetGuid());
                 return Task.FromResult(JsonSerializer.SerializeToElement(new[] { new { proposalId, status = "Approved", requesterId = producer,
@@ -44,7 +49,7 @@ public sealed class ProjectFoundationTests
     [InlineData("Failed")]
     [InlineData("Blocked")]
     [InlineData("Cancelled")]
-    public async Task FailedProposalSessionIsSurfacedInsteadOfStartingItAgain(string status)
+    public async Task TerminalProposalSessionRetainsOwnedWaitInsteadOfFailingTheCallbackOrStartingAgain(string status)
     {
         var team = Guid.NewGuid(); var producer = Guid.NewGuid(); var director = Guid.NewGuid(); var sessionId = Guid.NewGuid();
         var state = new GameDirectorOperatingState {
@@ -58,12 +63,18 @@ public sealed class ProjectFoundationTests
             "Proposal outcome is invalid", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
         var reads = 0;
         var runtime = new AgentTestRuntime().RegisterCapability<JsonElement, AgentCoordinationSession>("communication.coordination.read.v1",
-            (r, _) => { Assert.Equal(sessionId, r.GetProperty("sessionId").GetGuid()); reads++; return Task.FromResult(session); });
+            (r, _) => { Assert.Equal(sessionId, r.GetProperty("sessionId").GetGuid()); reads++; return Task.FromResult(session); })
+            .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
+                (r, _) => Task.FromResult(new AgentOperatingStateResponse(Guid.NewGuid(), r.StateKey, r.SchemaId, r.SchemaVersion,
+                    r.Status, r.SourceRevisions, r.ConditionCodes, r.DecisionFingerprint, r.OpenCommitmentCorrelations,
+                    r.AttentionReviewId, r.Payload, 2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)))
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (_, _) => Task.FromResult(new AgentOperatingStateReadResponse(null)));
         var context = runtime.CreateContext(identity: new(director.ToString(), "Director", null, "Director", null, [], null, null, null));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new VideoGameDirectorAgent()
-            .EnsureProjectFoundationAsync(state, 1, team, producer, Guid.NewGuid(), context, default));
-        Assert.Contains($"is {status}", error.Message);
-        Assert.Contains("Proposal outcome is invalid", error.Message);
+        var result = await new VideoGameDirectorAgent().EnsureProjectFoundationAsync(state, 1, team, producer, Guid.NewGuid(), context, default);
+        Assert.False(result.Ready);
+        Assert.Equal(status, result.State.ProposalWait!.Status);
+        Assert.Contains("Proposal outcome is invalid", result.State.ProposalWait.Reason);
         Assert.Equal(1, reads);
     }
 

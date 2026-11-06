@@ -1,4 +1,6 @@
-# Video Game Director 0.4.4
+# Video Game Director 0.4.5
+
+Project-proposal failures now retain a visible, manager-owned wait. A previously rejected field becoming accepted by the current granted broker contract permits one journaled resume of the same collaboration. Duplicate wakes, unchanged failures and lost resume responses preserve its pitch, team, proposal identity and retry boundary. Existing proposal receipts are recovered before considering submission recovery. Uses SDK 5.12.0 and Work Management Contracts 5.3.0.
 
 Attention reviews recover the retained legacy four-draft Producer block after an upgrade. Recovery verifies current participants, project/team, accepted pitch/GDD, latest submitted brief and exact independent findings; respects pending/paused decisions; journals one idempotent resume; and relays a bounded correction in the resumed Director callback. Already structured or exhausted corrections remain subject to their existing limits. A queued resume rechecks the current draft before acting.
 
@@ -15,7 +17,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.4** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.5** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
