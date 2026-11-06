@@ -1,4 +1,4 @@
-# Video Game Director 0.4.6
+# Video Game Director 0.5.0
 
 Project-proposal failures now retain a visible, manager-owned wait. A previously rejected field becoming accepted by the current granted broker contract permits one journaled resume of the same collaboration. Duplicate wakes, unchanged failures and lost resume responses preserve its pitch, team, proposal identity and retry boundary. Existing proposal receipts are recovered before considering submission recovery. Uses SDK 5.12.0 and Work Management Contracts 5.3.0.
 
@@ -17,7 +17,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.4.6** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.5.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 
@@ -96,3 +96,9 @@ Recognize explicitly selected imported games from current owner-accepted project
 Rename the build-runner choice to Authorize build-runner setup and explain that recording direction does not install or certify capacity. Link setup follow-through to Build runners with the exact business selected. Pausing keeps build work paused; custom answers do not imply setup authorization.
 
 Existing readiness discovery still checks actual certified provider/image eligibility before reporting capacity. Platform administration must install the provider and review/certify the exact environment. The matching C-Sweet UI change recognizes authorized business deep links; no new agent capabilities or grants are requested.
+
+Project build capacity uses durable resource fulfillment. The Director delegates the requirement
+to technical leadership; the Technical Director requests a project-scoped exact plan; the Producer
+reviews it within current authority. Published provider installation and real certification run
+as host-owned work. Resource-change events wake continuation; attention reads recover missed wakes.
+An approval is not a completed installation or a passing build.

@@ -17,7 +17,7 @@
   },
   "id": "com.csweet.video-game-director",
   "name": "Marcus Vale",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -624,6 +624,18 @@
       "scope": "organization",
       "purpose": "Read the authenticated human recovery choice bound to this manager and its durable conversation turn.",
       "modelVisible": false
+    },
+    {
+      "name": "platform.resource.read.v1",
+      "scope": "organization",
+      "purpose": "Request, review or observe durable manager-approved project resource fulfillment.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.resource.decide.v1",
+      "scope": "organization",
+      "purpose": "Review escalated exact resource plans within the current reporting chain.",
+      "modelVisible": false
     }
   ],
   "events": {
@@ -668,7 +680,8 @@
       "com.csweet.project-approval.decided.v1",
       "com.csweet.work.delegation.received.v1",
       "com.csweet.work.tracking.changed.v1",
-      "com.csweet.management.incident.owner-report-requested.v1"
+      "com.csweet.management.incident.owner-report-requested.v1",
+      "com.csweet.resource.changed.v1"
     ]
   },
   "configuration": [

@@ -98,14 +98,16 @@ public sealed class ProductionCommitmentTests
                     return Task.FromException<DecisionRecord>(new InvalidOperationException("captured"));
                 });
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(
-                state, 1, Guid.NewGuid(), runtime.CreateContext(), default));
-
-        Assert.NotNull(decision);
-        Assert.Contains("Phaser 2D web", decision.Summary);
-        Assert.DoesNotContain("babylon", decision.Summary, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(["restore-capacity", "pause"], decision.Options.Select(x => x.Id));
+        StartAgentCoordinationRequest? handoff = null;
+        runtime.RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read,
+            (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([]));
+        runtime.RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationStart,
+            (input, _) => { handoff = input; throw new InvalidOperationException("captured resource handoff"); });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(
+            state, 1, Guid.NewGuid(), runtime.CreateContext(), default));
+        Assert.Null(decision);
+        Assert.NotNull(handoff);
+        Assert.Equal("platform.resource.requirement.v1", handoff.Artifact!.Type);
     }
 
     [Fact]
@@ -193,10 +195,37 @@ public sealed class ProductionCommitmentTests
         var catalogs = 0;
         runtime.RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
             PlatformCapabilities.ToolchainCatalogRead, (_, _) => { catalogs++; return Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]); });
+        runtime.RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read,
+            (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([JsonSerializer.Deserialize<ResourceRequestState>("{}")! with {
+                ResourceType = ResourceCapabilities.BuildToolchain, ProfileKey = "phaser.web-2d.v1", Status = "Certifying" }]));
         var result = await new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default);
         Assert.False(result.Ready);
         Assert.Equal(expected ? 1 : 0, catalogs);
         if (expected) Assert.Equal(newLead, result.State.SpecialistEmployeeIds["game-technical-director"]);
+    }
+
+    [Theory]
+    [InlineData("Ready", true)] [InlineData("Approved", false)] [InlineData("Failed", false)] [InlineData("Revoked", false)]
+    public async Task Resource_wake_rechecks_current_readiness_and_discovers_only_the_exact_projects_continuation(string status, bool shouldWake)
+    {
+        var state = State(); var requestId = Guid.NewGuid(); var discoveries = 0;
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read, (r, _) => {
+                Assert.Equal(requestId, r.RequestId);
+                return Task.FromResult<IReadOnlyList<ResourceRequestState>>([JsonSerializer.Deserialize<ResourceRequestState>("{}")! with {
+                    Id = requestId, WorkstreamId = state.WorkstreamId!.Value, Status = status, ResourceType = ResourceCapabilities.BuildToolchain }]);
+            })
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead, (r, _) => {
+                Assert.Equal(VideoGameDirectorAgent.ProjectStateKey(state.WorkstreamId, null), r.StateKey);
+                return Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
+                    new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(), JsonSerializer.SerializeToElement(state), 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+            })
+            .RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) => {
+                discoveries++; return Task.FromResult(new PersonalTodoDirectory([], Guid.NewGuid()));
+            });
+        // A stale event can claim Ready; only the authorized current-state response decides.
+        await new VideoGameDirectorAgent().ReconcileResourceReadinessAsync(JsonSerializer.SerializeToElement(new { requestId, status = "Ready" }), runtime.CreateContext(), default);
+        Assert.Equal(shouldWake ? 1 : 0, discoveries);
     }
 
     private static AgentTeammate Technical(Guid employee) => new(employee.ToString("D"), "Technical Director", "Agent",

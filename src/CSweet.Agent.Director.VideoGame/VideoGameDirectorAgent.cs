@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.4.6";
+    public override string Version => "0.5.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -59,6 +59,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        if (message.EventType == ResourceCapabilities.Changed)
+        {
+            await ReconcileResourceReadinessAsync(message.Data, context, cancellationToken);
+            await HandleManagerAttentionReviewAsync(new(message.EventId, message.OccurredAt, message.OccurredAt.AddMinutes(5), "StateChanged"), context, cancellationToken);
+            return;
+        }
         if (message.EventType == "com.csweet.project-approval.decided.v1")
         {
             await ReconcilePortfolioAsync(message.EventId, context, cancellationToken);
@@ -1885,6 +1891,25 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var catalog = await context.Platform.ReadEligibleToolchainsAsync(new ReadToolchainCatalogV2Request(
             VideoGameProfileKeys.ProductionV2, recipe, targets,
             ["scaffold", "import", "build", "test", "run", "capture", "package"]), cancellationToken);
+        if (catalog.Count == 0 && recipe is "phaser.web-2d.v1" or "babylon.web-3d.v1")
+        {
+            var resources = await context.Platform.Resources.ReadAsync(new(WorkstreamId: workstreamId), cancellationToken);
+            if (!resources.Any(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == recipe))
+            {
+                var need = new ResourceRequest(workstreamId, ResourceCapabilities.BuildToolchain, recipe,
+                    "Provide the approved game's build, browser validation and packaging capability.", $"build-capacity:{workstreamId:N}:{recipe}");
+                await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(technicalDirectorId,
+                    "Request project build capacity", "Request the approved project's required build capacity through current-manager approval.",
+                    ["Return the durable resource request identity; approval and verification continue asynchronously."],
+                    "Prepare the resource request. Do not claim installation or readiness merely because it was requested.",
+                    acceptedVision.ConversationId, acceptedVision.ChatTurnId, acceptedVision.MessageId,
+                    $"resource-handoff:{workstreamId:N}:{recipe}", new("platform.resource.requirement.v1", "1.0", acceptedVision.Digest, 1, true,
+                        JsonSerializer.SerializeToElement(need))) { WorkContext = ProjectWorkContext(state, context, workstreamId) }, cancellationToken);
+            }
+            await context.ReportProgressAsync(new { stage = "resource-fulfillment", projectId = workstreamId,
+                status = resources.FirstOrDefault(x => x.ProfileKey == recipe)?.Status ?? "Requested", recipe }, cancellationToken);
+            return (state, revision, false);
+        }
         if (catalog.Count == 0)
         {
             if (!state.ToolchainBlockerDecisionId.HasValue)
