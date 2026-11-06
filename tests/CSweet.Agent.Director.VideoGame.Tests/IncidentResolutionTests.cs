@@ -27,7 +27,7 @@ public sealed class IncidentResolutionTests
             {
                 calls++;
                 Assert.Equal("manager-incident", request.GetProperty("telemetry").GetProperty("invocationKind").GetString());
-                Assert.Equal(32768, request.GetProperty("maxOutputTokens").GetInt32());
+                Assert.Equal(JsonValueKind.Null, request.GetProperty("maxOutputTokens").ValueKind);
                 Assert.Contains("Do not reject coordination", request.GetRawText());
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { role = "assistant",
                     text = "The recorded decisions leave contractor identity and playtest logistics to confirm. Please provide those facts; I can coordinate the accepted brief update with the Producer." }));

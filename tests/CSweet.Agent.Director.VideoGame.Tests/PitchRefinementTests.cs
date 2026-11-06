@@ -35,7 +35,8 @@ public sealed class PitchRefinementTests
                     new Dictionary<string, string>(), [], "review", [], Guid.NewGuid(), request.Payload, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)))
             .RegisterCapability<JsonElement, JsonElement>(PlatformCapabilities.LlmChatStream, (request, _) =>
             {
-                modelCalls++; Assert.Equal(8192, request.GetProperty("maxOutputTokens").GetInt32());
+                modelCalls++; Assert.Equal(JsonValueKind.Null, request.GetProperty("maxOutputTokens").ValueKind);
+                Assert.Contains("Early accepted direction remains relevant", request.GetProperty("messages")[1].GetProperty("text").GetString());
                 var prompt = request.GetProperty("messages")[0].GetProperty("text").GetString()!;
                 Assert.Contains("never reproduce it", prompt);
                 Assert.Contains("not automatic CEO escalation", prompt);
@@ -47,7 +48,9 @@ public sealed class PitchRefinementTests
             .RegisterCapability<DecideArtifactRevision, ArtifactDocument>(PlatformCapabilities.ArtifactDecide,
                 (request, _) => { decisions++; Assert.Equal(revision, request.RevisionId); return Task.FromResult(new ArtifactDocument(document, "Planning", PitchProtocol.DocumentType, "Approved", revision, null, revision, null, null, [])); });
         var request = new AgentCoordinationTurnRequest(session, 2, 2, "Pitch", "Refine", [],
-            new(director, Guid.NewGuid(), "Director", "Director"), new(producer, Guid.NewGuid(), "Producer", "Producer"), false, [])
+            new(director, Guid.NewGuid(), "Director", "Director"), new(producer, Guid.NewGuid(), "Producer", "Producer"), false,
+            Enumerable.Range(0, 12).Select(i => new AgentCoordinationTurn(Guid.NewGuid(), i, producer, "Continue",
+                i == 0 ? "Early accepted direction remains relevant" : "Later clarification " + i, DateTimeOffset.UtcNow, null)).ToArray())
             { WorkContext = new(Guid.NewGuid(), workstream, team, Guid.NewGuid(), null, null, null, Guid.NewGuid(), null, null) };
         var agent = new VideoGameDirectorAgent();
         var configured = await agent.ExecuteCapabilityAsync(new(Guid.NewGuid(), AgentConfigurationCapabilities.Update,

@@ -86,8 +86,8 @@ public sealed partial class VideoGameDirectorAgent
                     """, new(AgentInteractionModes.Lead, "production-baseline-review",
                         ["approved-scope", "resources", "business-constraints"], ["portfolio-direction"],
                         AgentInteractionResponseContracts.DecisionAndNextDirective) { CounterpartRoleKey = "game-producer" })),
-                new ChatMessage(ChatRole.User, $"Accepted pitch:\n{pitch.Markdown}\nCreative findings:\n{JsonSerializer.Serialize(creative, PitchProtocol.Json)}\nProducer review:\n{JsonSerializer.Serialize(review, PitchProtocol.Json)}\nShared draft:\n{ProductionSources.WorkingBrief(revision.Content)}\nConversation:\n{JsonSerializer.Serialize(request.Transcript.TakeLast(8).Select(x => new { x.SpeakerOrganizationUserId, x.Content }), PitchProtocol.Json)}")
-            ], new ChatOptions { MaxOutputTokens = Math.Min(ResolvePitchOutputTokens(Settings), 8192) }, token);
+                new ChatMessage(ChatRole.User, $"Accepted pitch:\n{pitch.Markdown}\nCreative findings:\n{JsonSerializer.Serialize(creative, PitchProtocol.Json)}\nProducer review:\n{JsonSerializer.Serialize(review, PitchProtocol.Json)}\nShared draft:\n{ProductionSources.WorkingBrief(revision.Content)}\nConversation:\n{JsonSerializer.Serialize(request.Transcript.Select(x => new { x.SpeakerOrganizationUserId, x.Content }), PitchProtocol.Json)}")
+            ], new ChatOptions { MaxOutputTokens = ResolvePitchOutputTokens(Settings) }, token);
             var result = PitchProtocol.ParseDirectorReview(response.Text);
             if (result is null || string.IsNullOrWhiteSpace(result.Guidance) || result.Guidance.Length > 16000 ||
                 result.SuggestedMarkdown is null || result.SuggestedMarkdown.Length > 48000 ||

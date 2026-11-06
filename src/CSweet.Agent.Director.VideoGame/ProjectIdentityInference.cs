@@ -59,7 +59,7 @@ public sealed partial class VideoGameDirectorAgent
             for (var generation = 0; generation < 2; generation++)
             {
                 var response = await client.GetResponseAsync(messages, new ChatOptions {
-                    Temperature = 0, MaxOutputTokens = Math.Min(8192, ResolvePitchOutputTokens(Settings))
+                    Temperature = 0, MaxOutputTokens = ResolvePitchOutputTokens(Settings)
                 }, token);
                 try
                 {
