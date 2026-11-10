@@ -24,20 +24,28 @@ public sealed class GameBoardTests
         var self = Guid.NewGuid();
         var report = Guid.NewGuid();
         var intake = Guid.NewGuid();
-        var pitch = Card(self, "Create the official game pitch", new(SourceFingerprint: intake.ToString("D")));
-        var otherGame = Card(self, "Another game's pitch", new(SourceFingerprint: Guid.NewGuid().ToString("D")));
+        var pitch = Card(self, "Create the official game pitch", new());
+        var staffing = Card(self, "Create and submit the game-studio staffing plan", new());
+        var fingerprinted = Card(self, "Intake card", new(SourceFingerprint: intake.ToString("D")));
+        var otherGame = Card(self, "Another game's pitch", new());
         var alreadyBound = Card(self, "Already on a board", new(BoardId: Guid.NewGuid(), SourceFingerprint: intake.ToString("D")));
         var inProject = Card(self, "Project work", new(WorkstreamId: Guid.NewGuid(), SourceFingerprint: intake.ToString("D")));
-        var noContext = Card(self, "Unrelated", null);
         var reportsCard = Card(report, "A report's card", new(SourceFingerprint: intake.ToString("D")));
         var directory = new CSweet.WorkManagement.Contracts.PersonalTodoDirectory(
         [
-            new(Guid.NewGuid(), self, "Marcus Vale", null, null, 1, [pitch, otherGame, alreadyBound, inProject, noContext]),
+            new(Guid.NewGuid(), self, "Marcus Vale", null, null, 1, [pitch, staffing, fingerprinted, otherGame, alreadyBound, inProject]),
             new(Guid.NewGuid(), report, "Gabriel Reyes", self, "Marcus Vale", 1, [reportsCard])
         ], self);
 
-        Assert.Equal(new[] { pitch.Id }, VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, intake).Select(x => x.Id).ToArray());
-        Assert.Empty(VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, null));
+        // A game started from chat has no intake: the cards are found by the ids the state records.
+        var fromChat = new GameDirectorOperatingState { VisionTodoId = pitch.Id, StaffingTodoId = staffing.Id };
+        var fromIntake = fromChat with { IntakeId = intake };
+
+        Assert.Equal(new[] { pitch.Id, staffing.Id },
+            VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, fromChat).Select(x => x.Id).ToArray());
+        Assert.Equal(new[] { pitch.Id, staffing.Id, fingerprinted.Id },
+            VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, fromIntake).Select(x => x.Id).ToArray());
+        Assert.Empty(VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, new GameDirectorOperatingState()));
     }
 
     private static CSweet.WorkManagement.Contracts.PersonalTodoItem Card(

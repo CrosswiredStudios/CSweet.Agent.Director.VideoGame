@@ -16,7 +16,37 @@ public sealed partial class VideoGameDirectorAgent
         GameDirectorOperatingState state, Guid teamId, AgentRuntimeContext context, CancellationToken token)
     {
         if (state.AcceptedVision is not { } vision || state.WorkstreamId.HasValue) return state.BoardId;
+        PlatformCapabilityException? failure = null;
+        for (var attempt = 1; attempt <= GameBoardAttempts; attempt++)
+        {
+            if (attempt > 1) await Task.Delay(GameBoardRetryDelay, token);
+            try { return await OpenGameBoardAsync(state, vision, teamId, context, token); }
+            catch (PlatformCapabilityException exception) { failure = exception; }
+        }
+        // Not granted on this installation, or still unavailable. Say why, so a run that starts the proposal
+        // without its board can be explained; the next review tries again.
         try
+        {
+            await context.ReportProgressAsync(new
+            {
+                stage = "game-board-unavailable", capability = failure?.Capability,
+                code = failure?.Code.ToString(), message = failure?.Message
+            }, token);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
+        return state.BoardId;
+    }
+
+    /// <summary>
+    /// The proposal runs on the board, so the board must exist when the first hires arrive. A just-approved
+    /// team can refuse its first board request; a few short retries inside the same pass cover that.
+    /// </summary>
+    internal const int GameBoardAttempts = 4;
+    internal static TimeSpan GameBoardRetryDelay { get; set; } = TimeSpan.FromSeconds(3);
+
+    private static async Task<Guid?> OpenGameBoardAsync(GameDirectorOperatingState state, AcceptedGameVision vision,
+        Guid teamId, AgentRuntimeContext context, CancellationToken token)
+    {
         {
             var open = (await context.Platform.Work.ListBoardsAsync(cancellationToken: token))
                 .Where(x => x.TeamId == teamId && !x.IsArchived && !x.WorkstreamId.HasValue).ToList();
@@ -33,11 +63,6 @@ public sealed partial class VideoGameDirectorAgent
                 TeamId = teamId
             }, token);
             return created.Id;
-        }
-        catch (PlatformCapabilityException)
-        {
-            // Not granted on this installation, or temporarily unavailable. The next review tries again.
-            return state.BoardId;
         }
     }
 
@@ -59,18 +84,25 @@ public sealed partial class VideoGameDirectorAgent
     }
 
     /// <summary>
-    /// Selects this Director's own agenda cards for one game that were created before its board existed:
-    /// cards carrying the game's intake fingerprint with no board and no project. Pure; no platform call.
+    /// Selects this Director's own agenda cards for one game that were created before its board existed: the
+    /// pitch and staffing-plan cards the state records by id, the Producer documentation card for the accepted
+    /// pitch, and any card carrying the game's intake fingerprint. Only cards with no board and no project.
+    /// Pure; no platform call.
     /// </summary>
-    internal static IReadOnlyList<PersonalTodoItem> CardsCreatedBeforeTheBoard(PersonalTodoDirectory directory, Guid? intakeId)
+    internal static IReadOnlyList<PersonalTodoItem> CardsCreatedBeforeTheBoard(PersonalTodoDirectory directory,
+        GameDirectorOperatingState state)
     {
-        if (intakeId is not { } intake) return [];
-        var fingerprint = intake.ToString("D");
+        var fingerprint = state.IntakeId?.ToString("D");
+        var documents = state.AcceptedVision is { } vision
+            ? $"{ProducerDocumentsPrefix}{vision.ConversationId:N}:{vision.Digest}" : null;
         return directory.Boards
             .Where(x => directory.CurrentOrganizationUserId is not { } self || x.OwnerOrganizationUserId == self)
             .SelectMany(x => x.Items)
-            .Where(x => x.ArchivedAt is null && x.WorkContext is { BoardId: null, WorkstreamId: null } work &&
-                        string.Equals(work.SourceFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
+            .Where(x => x.ArchivedAt is null && x.WorkContext is not ({ BoardId: not null } or { WorkstreamId: not null }) &&
+                        (x.Id == state.VisionTodoId || x.Id == state.StaffingTodoId ||
+                         documents is not null && x.CorrelationId == documents ||
+                         fingerprint is not null && string.Equals(x.WorkContext?.SourceFingerprint, fingerprint,
+                             StringComparison.OrdinalIgnoreCase)))
             .Take(25).ToList();
     }
 
@@ -83,11 +115,11 @@ public sealed partial class VideoGameDirectorAgent
         Guid boardId, AgentRuntimeContext context, CancellationToken token)
     {
         IReadOnlyList<PersonalTodoItem> cards;
-        try { cards = CardsCreatedBeforeTheBoard(await context.Platform.PersonalTodo.ListAsync(token), state.IntakeId); }
+        try { cards = CardsCreatedBeforeTheBoard(await context.Platform.PersonalTodo.ListAsync(token), state); }
         catch (PlatformCapabilityException) { return; }
         foreach (var card in cards)
         {
-            if (card.WorkContext is not { } work) continue;
+            var work = card.WorkContext ?? new PersonalTodoWorkContext();
             try
             {
                 _ = await context.Platform.PersonalTodo.UpdateAsync(new UpdatePersonalTodoItemRequest(
