@@ -48,6 +48,28 @@ public sealed class GameBoardTests
         Assert.Empty(VideoGameDirectorAgent.CardsCreatedBeforeTheBoard(directory, new GameDirectorOperatingState()));
     }
 
+    [Theory]
+    [InlineData("Active", "waiting")]
+    [InlineData("Summarizing", "waiting")]
+    [InlineData("Blocked", "waiting")]
+    [InlineData("Failed", "blocked")]
+    [InlineData("Cancelled", "blocked")]
+    [InlineData("Completed", "completed")]
+    public void HandoffCardWaitsOnABlockedParticipantAndBlocksOnlyOnFailure(string status, string expected)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var director = new CSweet.Agent.SDK.AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Marcus Vale", "Director");
+        var producer = new CSweet.Agent.SDK.AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Gabriel Reyes", "Producer");
+        var session = new CSweet.Agent.SDK.AgentCoordinationSession(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), director, producer,
+            "Prepare the production brief", "Prepare it.", ["Accepted."], status, 1, 1, producer.OrganizationUserId, false,
+            "Awaiting the creative review.", now, now, []);
+
+        Assert.Equal(expected, VideoGameDirectorAgent.HandoffCardState(session));
+        // Building the card result must not throw for any state.
+        _ = VideoGameDirectorAgent.HandoffCardResult(session, now);
+    }
+
     private static CSweet.WorkManagement.Contracts.PersonalTodoItem Card(
         Guid owner, string title, CSweet.WorkManagement.Contracts.PersonalTodoWorkContext? context) =>
         new(Guid.NewGuid(), Guid.NewGuid(), owner, owner, "Owner", title, "", "Completed", "High", 1024, 1, null, null, null,

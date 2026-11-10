@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.6.3";
+    public override string Version => "0.6.4";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1681,6 +1681,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 {
                     WorkContext = ProjectWorkContext(state, context, acceptedVision.ChatTurnId)
                 }, cancellationToken);
+            await QueueHandoffCardAsync(state, session, acceptedVision,
+                "Agree the production brief with the Producer",
+                "Tracks the shared production brief the Producer prepares from the approved pitch and design document.",
+                context, cancellationToken);
             state = state with { HandoffSessionId = session.Id };
         }
         var handoffSaved = await SaveStateAsync(state, revision, reviewId,
@@ -1923,6 +1927,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     acceptedVision.ConversationId, acceptedVision.ChatTurnId, acceptedVision.MessageId,
                     $"resource-handoff:{workstreamId:N}:{recipe}", new("platform.resource.requirement.v1", "1.0", acceptedVision.Digest, 1, true,
                         JsonSerializer.SerializeToElement(need))) { WorkContext = ProjectWorkContext(state, context, workstreamId) }, cancellationToken);
+                await QueueHandoffCardAsync(state, handoff, acceptedVision,
+                    "Get build capacity requested by the Technical Director",
+                    "Tracks the Technical Director's request for the project's build capacity. Approval and verification continue on the resource request.",
+                    context, cancellationToken);
                 if (handoff.Status is "Failed" or "Blocked")
                 {
                     if (handoff.Status != "Failed" || handoff.FinalSummary?.Contains("capability=platform.resource.request.v1", StringComparison.Ordinal) != true ||
@@ -2019,6 +2027,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     {
                         WorkContext = ProjectWorkContext(state, context, workstreamId)
                     }, cancellationToken);
+                await QueueHandoffCardAsync(state, session, acceptedVision,
+                    "Get the Technical Director's toolchain feasibility review",
+                    "Tracks the Technical Director's feasibility review of the chosen toolchain against the accepted vision.",
+                    context, cancellationToken);
                 var saved = await SaveStateAsync(state with { ToolchainFeasibilitySessionId = session.Id },
                     revision, reviewId, $"toolchain-feasibility-session:{session.Id:N}", context, cancellationToken);
                 return (saved.State, saved.Revision, false);

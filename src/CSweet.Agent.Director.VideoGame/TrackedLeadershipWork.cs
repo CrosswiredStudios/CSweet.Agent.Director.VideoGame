@@ -21,11 +21,56 @@ public sealed partial class VideoGameDirectorAgent
                 SourceConversationId = pitch.ConversationId, SourceMessageId = pitch.MessageId
             }, token);
 
+    /// <summary>
+    /// Gives a leadership handoff (production brief, creative review, build capacity, toolchain feasibility)
+    /// an owning card bound to the project, the game board and the exact session. Best effort and idempotent
+    /// per session, so it is safe on every pass that re-reads the same collaboration.
+    /// </summary>
+    internal static Task QueueHandoffCardAsync(GameDirectorOperatingState state, AgentCoordinationSession session,
+        AcceptedGameVision pitch, string title, string description, AgentRuntimeContext context, CancellationToken token) =>
+        TrackedCollaboration.QueueCardAsync(context, session, new TrackedCollaborationCard(title, description)
+        {
+            WorkstreamId = state.WorkstreamId, TeamId = state.TeamId, BoardId = state.BoardId,
+            SourceConversationId = pitch.ConversationId, SourceMessageId = pitch.MessageId
+        }, token);
+
+    /// <summary>
+    /// What a handoff card reports for its session. A handoff has no separate durable outcome: the completed
+    /// collaboration is the outcome. A participant reporting Blocked is usually waiting on someone, so the card
+    /// waits and shows who and why; only a failed or cancelled collaboration blocks the card.
+    /// </summary>
+    internal static PersonalTodoResult HandoffCardResult(AgentCoordinationSession session, DateTimeOffset now)
+    {
+        var blocker = CollaborationBlocker.FromSession(session);
+        return HandoffCardState(session) switch
+        {
+            "completed" => PersonalTodoResult.Completed("The collaboration completed."),
+            "blocked" => PersonalTodoResult.Blocked(
+                blocker?.ToCardReason("Use Retry on the game board after fixing the cause.") ?? "The collaboration stopped."),
+            _ => PersonalTodoResult.WaitingUntil(now.AddMinutes(10),
+                blocker?.ToCardReason("Use Retry on the game board if this does not move.") ??
+                "Waiting for this collaboration to finish.")
+        };
+    }
+
+    /// <summary>The card state a handoff session maps to: completed, waiting or blocked. Pure.</summary>
+    internal static string HandoffCardState(AgentCoordinationSession session) => session.Status switch
+    {
+        AgentCoordinationStatuses.Completed => "completed",
+        AgentCoordinationStatuses.Failed or AgentCoordinationStatuses.Cancelled => "blocked",
+        _ => "waiting"
+    };
+
     /// <summary>Answers a tracked-collaboration card from durable state and the session. No model is asked.</summary>
     private async Task<PersonalTodoResult> ReviewTrackedCollaborationAsync(PersonalTodoItem item,
         AgentRuntimeContext context, CancellationToken token)
     {
+        if (!TrackedCollaboration.TryGetSessionId(item, out var sessionId))
+            return PersonalTodoResult.Blocked("The collaboration reference on this card is invalid.");
         var state = (await ReadStateForTodoAsync(item, context, token)).State;
+        if (sessionId != state.CreativeDesignSessionId)
+            return HandoffCardResult(await context.Platform.Communication.ReadCoordinationAsync(sessionId, token),
+                DateTimeOffset.UtcNow);
         var designed = state.CreativeDesignArtifactId is not null && state.CreativeDesignRevisionId is not null;
         return await TrackedCollaboration.ReviewAsync(context, item, new TrackedCollaborationReview(designed)
         {

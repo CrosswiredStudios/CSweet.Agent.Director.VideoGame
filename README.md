@@ -1,4 +1,6 @@
-# Video Game Director 0.6.3
+# Video Game Director 0.6.4
+
+Every leadership handoff the Director starts now has an owning card on the game board: the production brief, the creative review, the build-capacity request and the toolchain feasibility review, alongside the proposal and the design document. A handoff that is waiting on someone shows who and why; a failed one is Blocked with Retry.
 
 The game board now opens before the project proposal starts even when the first hires arrive within seconds of the team approval: opening is retried inside the same pass, and the reason is reported when it still cannot open. The pitch and staffing-plan cards are found by the ids the Director already records, so they join the board for games started from chat.
 
@@ -25,7 +27,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.6.3** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.6.4** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 

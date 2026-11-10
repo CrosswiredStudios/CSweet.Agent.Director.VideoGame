@@ -49,7 +49,7 @@ public sealed partial class VideoGameDirectorAgent
                     JsonSerializer.SerializeToElement(new CreativeReviewIndex((index?.Payload.Parents ?? []).Append(parent).TakeLast(100).ToArray())),
                     index?.Revision, $"creative-review-parent:{parent:N}:{revision.Id:N}:{pitch.ArtifactRevisionId:N}"), token);
         }
-        await context.Platform.Communication.StartCoordinationAsync(new(creative,
+        var reviewSession = await context.Platform.Communication.StartCoordinationAsync(new(creative,
             "Creative review of exact project evidence", input.Purpose, ["An evidence-backed creative disposition"],
             "Return creative findings only. Do not approve budget, delivery, technical correctness, QA or launch.",
             pitch.ConversationId, pitch.ChatTurnId, pitch.MessageId, key + ":session",
@@ -58,6 +58,10 @@ public sealed partial class VideoGameDirectorAgent
                 sources is null ? [new(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash), new(document.Id, revision.Id, revision.ContentSha256)]
                     : [new(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash), new(document.Id, revision.Id, revision.ContentSha256), sources]))
             { WorkContext = ProjectWorkContext(state, context, document.Id) }, token);
+        await QueueHandoffCardAsync(state, reviewSession, pitch,
+            "Get the Creative Director's creative review",
+            "Tracks the Creative Director's review of the exact project evidence against the approved pitch.",
+            context, token);
         return null;
     }
 
