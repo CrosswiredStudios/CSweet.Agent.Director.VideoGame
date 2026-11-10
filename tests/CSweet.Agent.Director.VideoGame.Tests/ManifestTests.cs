@@ -33,6 +33,8 @@ public sealed class ManifestTests
             "maxOutputTokens").TryGetProperty("maximum", out _));
         Assert.Equal("maxContextWindowTokens", outputTokens.LessThanFieldKey);
         Assert.Contains(manifest.Requires, x => x.Name == "work.board.read" && x.Scope == "team");
+        Assert.Contains(manifest.Requires, x => x.Name == "work.board.create" && x.Scope == "team");
+        Assert.Contains(manifest.Requires, x => x.Name == "communication.coordination.start-board.v1" && x.Scope == "team");
         Assert.Contains(manifest.Requires, x => x.Name == "work.item.read" && x.Scope == "team");
         Assert.Contains(VideoGameDirectorAgent.GameVisionCapability, manifest.Capabilities);
         Assert.NotNull(manifest.RolePolicy);

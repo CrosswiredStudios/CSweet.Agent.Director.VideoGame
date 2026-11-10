@@ -1,4 +1,6 @@
-# Video Game Director 0.5.1
+# Video Game Director 0.6.0
+
+The Director opens the game's one board as soon as the studio team is approved, before the project proposal. The Producer's project proposal then runs as a collaboration on that board, and the platform hands the board to the Producer when the approved project asks for its board. Two team-scoped grants are new: `work.board.create` and `communication.coordination.start-board.v1`. Without them the previous chat collaboration continues unchanged.
 
 Project-proposal failures now retain a visible, manager-owned wait. A previously rejected field becoming accepted by the current granted broker contract permits one journaled resume of the same collaboration. Duplicate wakes, unchanged failures and lost resume responses preserve its pitch, team, proposal identity and retry boundary. Existing proposal receipts are recovered before considering submission recovery. Uses SDK 5.12.0 and Work Management Contracts 5.3.0.
 
@@ -17,7 +19,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.5.1** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.6.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 

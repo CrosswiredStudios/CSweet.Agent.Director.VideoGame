@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.5.1";
+    public override string Version => "0.6.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1559,6 +1559,11 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 $"await-team:{resource.Id:N}", context, cancellationToken);
             return;
         }
+        // Open the game's one board as soon as its studio team exists, before any hire arrives.
+        // The Producer's later project-board request adopts this board instead of creating another.
+        if (!state.BoardId.HasValue && !state.WorkstreamId.HasValue &&
+            await EnsureGameBoardAsync(state, approvedTeamId, context, cancellationToken) is { } gameBoard)
+            state = state with { BoardId = gameBoard };
 
         var roster = (await context.Platform.ReadTeamRosterAsync(
             new TeamRosterV2Request(approvedTeamId, null, 1, 100), cancellationToken)).Team;
@@ -2292,14 +2297,35 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     VideoGameArtifactTypeKeys.Vision, "Accepted")]);
             if (importedProject is not null)
                 projectPlan = projectPlan with { ExistingProjectId = importedProject.Id, ExpectedProjectRevision = importedProject.ImportedProject!.ProjectRevision };
-            var projectSession = await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(
-                producerId, "Propose the accepted game project", "Prepare a project proposal from the accepted direction for manager review.",
-                ["An exact project proposal is reviewed by its assigned manager"],
-                "Analyze the project template and accepted evidence. Preserve the inferred game title and product description. Submit the project proposal as Producer and return its approval ID for my review.",
+            var foundationRequest = CollaborationActions.WithDocuments(new AgentCoordinationArtifactSubmission("video-game.project-foundation.request.v1", "1.0", projectVision.Digest, 1, true,
+                ProjectFoundationPayload(projectPlan, projectVision.ConversationId, projectIdentity)), projectPlan.InitialEvidence.Where(x => x.Kind == "artifact").Select(x => new CollaborationDocumentReference(x.ResourceId, x.RevisionId!.Value, x.Digest!)).ToArray());
+            const string foundationSubject = "Propose the accepted game project";
+            const string foundationObjective = "Prepare a project proposal from the accepted direction for manager review.";
+            const string foundationMessage = "Analyze the project template and accepted evidence. Preserve the inferred game title and product description. Submit the project proposal as Producer and return its approval ID for my review.";
+            IReadOnlyList<string> foundationCriteria = ["An exact project proposal is reviewed by its assigned manager"];
+            AgentCoordinationSession? projectSession = null;
+            // With the game board open, the proposal is a board collaboration: a retry of a blocked
+            // proposal returns the turn to the Producer, and the platform's board recovery applies.
+            // Without a usable board the existing chat collaboration is unchanged.
+            if (state.BoardId is { } gameBoardId)
+            {
+                try
+                {
+                    projectSession = await context.Platform.Communication.StartBoardCoordinationAsync(new StartBoardCoordinationRequest(
+                        producerId, gameBoardId, foundationSubject, foundationObjective, foundationCriteria, foundationMessage,
+                        $"project-foundation-board:{gameBoardId:N}:{projectVision.Digest}", foundationRequest), cancellationToken);
+                }
+                catch (PlatformCapabilityException ex) when (ex.Code is PlatformCapabilityErrorCode.Denied or
+                    PlatformCapabilityErrorCode.NotFound or PlatformCapabilityErrorCode.Conflict or
+                    PlatformCapabilityErrorCode.ValidationFailed or PlatformCapabilityErrorCode.ApprovalRequired)
+                {
+                    // The board grant is not approved yet, or the board no longer qualifies for this pair.
+                }
+            }
+            projectSession ??= await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(
+                producerId, foundationSubject, foundationObjective, foundationCriteria, foundationMessage,
                 projectVision.ConversationId, projectVision.ChatTurnId, projectVision.MessageId,
-                $"project-foundation:{projectVision.Digest}",
-                CollaborationActions.WithDocuments(new AgentCoordinationArtifactSubmission("video-game.project-foundation.request.v1", "1.0", projectVision.Digest, 1, true,
-                    ProjectFoundationPayload(projectPlan, projectVision.ConversationId, projectIdentity)), projectPlan.InitialEvidence.Where(x => x.Kind == "artifact").Select(x => new CollaborationDocumentReference(x.ResourceId, x.RevisionId!.Value, x.Digest!)).ToArray())), cancellationToken);
+                $"project-foundation:{projectVision.Digest}", foundationRequest), cancellationToken);
             state = state with
             {
                 WorkingTitle = workingTitle,

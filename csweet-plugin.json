@@ -17,7 +17,7 @@
   },
   "id": "com.csweet.video-game-director",
   "name": "Marcus Vale",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -263,6 +263,11 @@
       "purpose": "Start authenticated exact-digest vision and Technical Director feasibility handoffs."
     },
     {
+      "name": "communication.coordination.start-board.v1",
+      "scope": "team",
+      "purpose": "Start the Producer's project proposal as a collaboration on the game's board."
+    },
+    {
       "name": "communication.coordination.respond.v1",
       "scope": "team",
       "purpose": "Answer reporting-tree creative questions and complete typed project coordination."
@@ -411,6 +416,11 @@
       "name": "work.board.read",
       "scope": "team",
       "purpose": "Inspect project-scoped boards and all accountable work."
+    },
+    {
+      "name": "work.board.create",
+      "scope": "team",
+      "purpose": "Open the game's one board when its studio team is approved, so leadership work is visible before the project exists."
     },
     {
       "name": "work.item.read",
