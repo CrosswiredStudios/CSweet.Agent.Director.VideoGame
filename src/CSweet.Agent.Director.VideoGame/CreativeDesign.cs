@@ -35,6 +35,7 @@ public sealed partial class VideoGameDirectorAgent
                     JsonSerializer.SerializeToElement(input, ProjectApprovalJson)),
                     [new CollaborationDocumentReference(pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash)]))
                 { WorkContext = ProjectWorkContext(state, context, pitch.ArtifactRevisionId) }, token);
+            await QueueCreativeDesignCardAsync(state, project, team, session, pitch, context, token);
             var saved = await SaveStateAsync(state with { CreativeDesignSessionId = session.Id }, revision,
                 session.Id, $"creative-design-session:{session.Id:N}", context, token);
             return (saved.State, saved.Revision, false);

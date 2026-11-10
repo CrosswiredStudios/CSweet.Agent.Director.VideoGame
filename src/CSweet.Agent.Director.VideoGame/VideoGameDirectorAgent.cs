@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.6.0";
+    public override string Version => "0.6.2";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -309,6 +309,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             return await HandlePlanningFollowthroughAsync(item, context, cancellationToken);
         if (item.CorrelationId?.StartsWith(ProducerDocumentsPrefix, StringComparison.Ordinal) == true)
             return await PrepareProducerDocumentationAsync(item, context, cancellationToken);
+        if (item.CorrelationId?.StartsWith(ProposalCollaborationPrefix, StringComparison.Ordinal) == true)
+            return await TrackProposalCollaborationAsync(item, context, cancellationToken);
+        if (TrackedCollaboration.IsTrackingCard(item))
+            return await ReviewTrackedCollaborationAsync(item, context, cancellationToken);
         if (item.CorrelationId?.StartsWith(ProductionCommitmentPrefix, StringComparison.Ordinal) == true)
             return await HandleProductionCommitmentAsync(item, context, cancellationToken);
         if (GameDirectorAgenda.IsVision(item))
@@ -441,6 +445,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        await WakeBlockedCollaborationCardAsync(request.SessionId, context, cancellationToken);
         if (request.Transcript.LastOrDefault(x => x.Artifact is not null)?.Artifact?.Type == "platform.resource.requested.v1")
             return await ReceiveResourceRequestAsync(request, context, cancellationToken);
         if (request.Transcript.Any(x => x.Artifact?.Type == CreativeReviewRequestType))
@@ -663,7 +668,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
 
         if (inboundDisposition == GameDirectorInboundDisposition.StatusRequest)
         {
-            await stream.CommitAsync(CreateChatStatus(state), cancellationToken);
+            await stream.CommitAsync(
+                CreateChatStatus(state) + await BlockedLeadershipStatusAsync(state, context, cancellationToken),
+                cancellationToken);
             return;
         }
 
@@ -1563,7 +1570,11 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         // The Producer's later project-board request adopts this board instead of creating another.
         if (!state.BoardId.HasValue && !state.WorkstreamId.HasValue &&
             await EnsureGameBoardAsync(state, approvedTeamId, context, cancellationToken) is { } gameBoard)
+        {
             state = state with { BoardId = gameBoard };
+            // The pitch and staffing-plan cards were created before a team, and so a board, could exist.
+            await BindEarlierCardsToGameBoardAsync(state, approvedTeamId, gameBoard, context, cancellationToken);
+        }
 
         var roster = (await context.Platform.ReadTeamRosterAsync(
             new TeamRosterV2Request(approvedTeamId, null, 1, 100), cancellationToken)).Team;
@@ -2326,6 +2337,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 producerId, foundationSubject, foundationObjective, foundationCriteria, foundationMessage,
                 projectVision.ConversationId, projectVision.ChatTurnId, projectVision.MessageId,
                 $"project-foundation:{projectVision.Digest}", foundationRequest), cancellationToken);
+            if (projectSession.BoardSource is { } proposalBoard)
+                await QueueProposalCollaborationCardAsync(state, teamId.Value, proposalBoard.BoardId, projectSession, context, cancellationToken);
             state = state with
             {
                 WorkingTitle = workingTitle,
@@ -2906,8 +2919,13 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         return await ReadStateByKeyAsync(StateKey, context, cancellationToken);
     }
 
+    // Before the project exists, agenda cards name the game board so they appear on it as leadership work.
+    // Once the project exists the context is project-scoped as before, which the platform's planning-wait
+    // binding depends on.
     private static PersonalTodoWorkContext TodoContext(GameDirectorOperatingState state) =>
-        new(WorkstreamId: state.WorkstreamId, TeamId: state.TeamId, SourceFingerprint: state.IntakeId?.ToString("D"));
+        new(WorkstreamId: state.WorkstreamId, TeamId: state.TeamId,
+            BoardId: state.WorkstreamId.HasValue ? null : state.BoardId,
+            SourceFingerprint: state.IntakeId?.ToString("D"));
 
     private async Task<(GameDirectorOperatingState State, long? Revision)> ReadStateForTodoAsync(
         PersonalTodoItem item, AgentRuntimeContext context, CancellationToken token)

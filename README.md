@@ -1,4 +1,8 @@
-# Video Game Director 0.6.0
+# Video Game Director 0.6.2
+
+The design-document commission to the Creative Director now has an owning card, "Get the game design document from the Creative Director", made with the SDK's `TrackedCollaboration` helper (SDK 5.15.0) and shown on the game board. A blocked collaboration card returns to the queue as soon as a turn arrives on its collaboration. A status answer now names blocked leadership work.
+
+The proposal collaboration on the game board now has an owning card on the Director's agenda, "Get the Producer's project proposal approved", bound to the board and the exact session. The card is Blocked while the collaboration is blocked; moving it back to To Do, or updating the Producer, asks the Producer for a fresh proposal through the platform's board recovery. The board is named after the game, with the pitch document label and quotes removed.
 
 The Director opens the game's one board as soon as the studio team is approved, before the project proposal. The Producer's project proposal then runs as a collaboration on that board, and the platform hands the board to the Producer when the approved project asks for its board. Two team-scoped grants are new: `work.board.create` and `communication.coordination.start-board.v1`. Without them the previous chat collaboration continues unchanged.
 
@@ -19,7 +23,7 @@ Route post-pitch creative work through SDK tracked delegation. Require exact Nao
 CEO communication and material business decisions belong to the Video Game Director. Specialists preserve independent discipline evidence; no role may manufacture another role's acceptance.
 
 
-`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.6.0** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
+`CSweet.Agent.Director.VideoGame` / `com.csweet.video-game-director` version **0.6.2** is the business-wide video game leader, reporting to the CEO. The Chief of Staff recommends this role first for a game studio.
 
 ## Responsibilities and approval flow
 

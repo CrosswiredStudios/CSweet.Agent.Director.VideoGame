@@ -57,6 +57,7 @@ public sealed class ManifestTests
         Assert.Contains(PersonalTodoEvents.Available, manifest.Events.Subscribes);
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Read);
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Add);
+        Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Update);
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Requeue);
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Claim);
         Assert.Contains(manifest.Requires, x => x.Name == PersonalTodoCapabilities.Complete);

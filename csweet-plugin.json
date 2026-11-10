@@ -17,7 +17,7 @@
   },
   "id": "com.csweet.video-game-director",
   "name": "Marcus Vale",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -381,6 +381,11 @@
       "name": "work.personal-todo.add.v1",
       "scope": "organization",
       "purpose": "Track the high-level GDD, governed staffing-plan submission, and authenticated chat-created creative obligations as durable personal work."
+    },
+    {
+      "name": "work.personal-todo.update.v1",
+      "scope": "organization",
+      "purpose": "Bind this installation's own earlier agenda cards for a game to that game's board once the board exists."
     },
     {
       "name": "work.personal-todo.requeue.v1",
