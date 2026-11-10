@@ -205,7 +205,7 @@ public sealed class ProductionCommitmentTests
     }
 
     [Theory]
-    [InlineData("Ready", true)] [InlineData("Approved", false)] [InlineData("Failed", false)] [InlineData("Revoked", false)]
+    [InlineData("Ready", true)] [InlineData("Approved", true)] [InlineData("Failed", true)] [InlineData("Revoked", true)]
     public async Task Resource_wake_rechecks_current_readiness_and_discovers_only_the_exact_projects_continuation(string status, bool shouldWake)
     {
         var state = State(); var requestId = Guid.NewGuid(); var discoveries = 0;
@@ -228,6 +228,59 @@ public sealed class ProductionCommitmentTests
         Assert.Equal(shouldWake ? 1 : 0, discoveries);
     }
 
+    [Fact]
+    public async Task Failed_resource_handoff_is_resumed_once_with_its_retained_requirement()
+    {
+        var state = State(); var resumes = 0;
+        var session = JsonSerializer.Deserialize<AgentCoordinationSession>("{}")! with { Id = Guid.NewGuid(), Revision = 4, Status = "Failed",
+            FinalSummary = "agent-failure:v1;code=validation_failed;capability=platform.resource.request.v1" };
+        var runtime = RosterRuntime(state, [Technical(Guid.NewGuid())])
+            .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(PlatformCapabilities.ToolchainCatalogRead, (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]))
+            .RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read, (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([]))
+            .RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationStart, (r, _) => {
+                Assert.Equal("platform.resource.requirement.v1", r.Artifact!.Type); return Task.FromResult(session);
+            })
+            .RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume, (r, _) => {
+                resumes++; Assert.Equal(session.Id, r.SessionId); Assert.Equal(4, r.ExpectedRevision);
+                session = session with { Status = "Active", Revision = 5 }; return Task.FromResult(session);
+            });
+        var director = new VideoGameDirectorAgent();
+        await director.EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default);
+        await director.EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default);
+        Assert.Equal(1, resumes);
+    }
+
+    [Theory]
+    [InlineData("WaitingDependency")] [InlineData("NeedsAttention")] [InlineData("Failed")]
+    public async Task Resource_failure_reports_the_actual_dependency_instead_of_generic_waiting(string status)
+    {
+        var state = State();
+        var runtime = RosterRuntime(state, [Technical(Guid.NewGuid())])
+            .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(PlatformCapabilities.ToolchainCatalogRead, (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]))
+            .RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read, (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([
+                JsonSerializer.Deserialize<ResourceRequestState>("{}")! with { Id = Guid.NewGuid(), Status = status, ResourceType = ResourceCapabilities.BuildToolchain,
+                    ProfileKey = "phaser.web-2d.v1", Condition = "Configure catalog read access for the private provider repository." }]));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default));
+        Assert.Contains("catalog read access", error.Message); Assert.Contains(status, error.Message);
+    }
+
+    [Theory]
+    [InlineData("Blocked", "The requirement needs correction.")]
+    [InlineData("Failed", "agent-failure:v1;code=denied;capability=platform.resource.request.v1")]
+    [InlineData("Failed", "agent-failure:v1;code=validation_failed;capability=platform.other.v1")]
+    public async Task Unrelated_or_unauthorized_handoff_failures_do_not_receive_automatic_retries(string status, string summary)
+    {
+        var state = State();
+        var session = JsonSerializer.Deserialize<AgentCoordinationSession>("{}")! with {
+            Id = Guid.NewGuid(), Revision = 4, Status = status, FinalSummary = summary };
+        var runtime = RosterRuntime(state, [Technical(Guid.NewGuid())])
+            .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(PlatformCapabilities.ToolchainCatalogRead, (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]))
+            .RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read, (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([]))
+            .RegisterCapability<StartAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationStart, (_, _) => Task.FromResult(session));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default));
+        Assert.Contains(summary, error.Message);
+    }
+
     private static AgentTeammate Technical(Guid employee) => new(employee.ToString("D"), "Technical Director", "Agent",
         null, null, "Teammate", "Active") { AgentInstallationId = Guid.NewGuid(), RuntimeEligibility = "Eligible",
         DeclaredRoleKeys = ["game-technical-director"], EffectiveCapabilities = ["work.execution.run"] };
@@ -236,7 +289,9 @@ public sealed class ProductionCommitmentTests
         new AgentTestRuntime().RegisterCapability<TeamRosterV2Request, TeamRosterV2Response>(PlatformCapabilities.TeamRosterReadV2,
             (request, _) => { Assert.Equal(state.TeamId, request.TeamId); return Task.FromResult(new TeamRosterV2Response(
                 new AgentTeamContext((wrongTeam ? Guid.NewGuid() : state.TeamId!.Value).ToString("D"), "game", "Game", 2,
-                    "producer", "Producer", members, [], members.Count, false), state.WorkstreamId)); });
+                    "producer", "Producer", members, [], members.Count, false), state.WorkstreamId)); })
+            .RegisterCapability<ReadDecisionRequest, IReadOnlyList<DecisionRecord>>(PlatformCapabilities.DecisionRead,
+                (_, _) => Task.FromResult<IReadOnlyList<DecisionRecord>>([]));
 
     private static GameDirectorOperatingState State() => new() {
         WorkstreamId = Guid.NewGuid(), TeamId = Guid.NewGuid(), WorkingTitle = "Gridlock",

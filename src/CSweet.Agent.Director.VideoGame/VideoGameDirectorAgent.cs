@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.5.0";
+    public override string Version => "0.5.1";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -441,6 +441,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        if (request.Transcript.LastOrDefault(x => x.Artifact is not null)?.Artifact?.Type == "platform.resource.requested.v1")
+            return await ReceiveResourceRequestAsync(request, context, cancellationToken);
         if (request.Transcript.Any(x => x.Artifact?.Type == CreativeReviewRequestType))
             return await ReceiveCreativeReviewAsync(request, context, cancellationToken);
         if (request.Transcript.Any(x => x.Artifact?.Type == CreativeDesignRequestType))
@@ -1898,14 +1900,38 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             {
                 var need = new ResourceRequest(workstreamId, ResourceCapabilities.BuildToolchain, recipe,
                     "Provide the approved game's build, browser validation and packaging capability.", $"build-capacity:{workstreamId:N}:{recipe}");
-                await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(technicalDirectorId,
+                var handoff = await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(technicalDirectorId,
                     "Request project build capacity", "Request the approved project's required build capacity through current-manager approval.",
                     ["Return the durable resource request identity; approval and verification continue asynchronously."],
                     "Prepare the resource request. Do not claim installation or readiness merely because it was requested.",
                     acceptedVision.ConversationId, acceptedVision.ChatTurnId, acceptedVision.MessageId,
                     $"resource-handoff:{workstreamId:N}:{recipe}", new("platform.resource.requirement.v1", "1.0", acceptedVision.Digest, 1, true,
                         JsonSerializer.SerializeToElement(need))) { WorkContext = ProjectWorkContext(state, context, workstreamId) }, cancellationToken);
+                if (handoff.Status is "Failed" or "Blocked")
+                {
+                    if (handoff.Status != "Failed" || handoff.FinalSummary?.Contains("capability=platform.resource.request.v1", StringComparison.Ordinal) != true ||
+                        !handoff.FinalSummary.Contains("code=validation_failed", StringComparison.Ordinal))
+                        throw new InvalidOperationException($"Build-capacity handoff is {handoff.Status}: {handoff.FinalSummary}");
+                    var resumed = await context.Platform.Communication.ResumeCoordinationAsync(handoff.Id, handoff.Revision,
+                        "Resume the retained resource requirement using durable preparation; no approval or readiness is implied.",
+                        $"resource-handoff-recover:{handoff.Id:N}:durable-preparation-v1", cancellationToken);
+                    if (resumed.Status is "Failed" or "Blocked")
+                        throw new InvalidOperationException($"Build-capacity handoff recovery needs attention: {resumed.FinalSummary}");
+                }
             }
+            var currentResource = resources.FirstOrDefault(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == recipe);
+            if (currentResource is not null && state.ToolchainBlockerDecisionId is { } oldId)
+            {
+                var oldDecision = (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(oldId), cancellationToken)).SingleOrDefault();
+                if (oldDecision is { AuthorityRuleKey: "unsupported-or-uncertified-toolchain", Status: "Cancelled" })
+                {
+                    var cleared = await SaveStateAsync(state with { ToolchainBlockerDecisionId = null }, revision, reviewId,
+                        $"resource-replaces-setup:{currentResource.Id:N}:{oldId:N}", context, cancellationToken);
+                    state = cleared.State; revision = cleared.Revision;
+                }
+            }
+            if (currentResource?.Status is "WaitingDependency" or "Failed" or "NeedsAttention" or "Revoked" or "Rejected" or "RevisionRequested")
+                throw new InvalidOperationException($"Build-capacity request {currentResource.Id:D} is {currentResource.Status}: {currentResource.Condition} See project resource setup for the current dependency and recovery state.");
             await context.ReportProgressAsync(new { stage = "resource-fulfillment", projectId = workstreamId,
                 status = resources.FirstOrDefault(x => x.ProfileKey == recipe)?.Status ?? "Requested", recipe }, cancellationToken);
             return (state, revision, false);
