@@ -1,4 +1,8 @@
-# Video Game Director 0.6.6
+# Video Game Director 0.6.7
+
+When Naomi's creative review of the production brief uses up its attempts, Marcus asks the owner how to continue (retry the review, ask Gabriel to revise the brief, or keep it paused) instead of leaving the review blocked.
+
+## Video Game Director 0.6.6
 
 Request ownership is read with the SDK's `AgentModelJson`, so an invalid owner or reason is corrected in the same conversation instead of failing the request. A Creative Director that appends the exact reason to an incomplete review (" Reason: ...") is still retried, and the reason is shown in the retry and in the final blocked status.
 

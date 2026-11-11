@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CSweet.Agent.SDK;
+using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agent.Director.VideoGame.Tests;
 
@@ -40,7 +41,7 @@ public sealed class CreativeReviewRecoveryTests
     [InlineData("other-agent", 0)]
     [InlineData("stale-pitch", 0)]
     [InlineData("real-blocker", 0)]
-    [InlineData("exhausted", 0)]
+    [InlineData("exhausted", 1)] // Resumes once so the turn asks the owner how to continue.
     public async Task Recovery_rechecks_exact_authority_and_bounds_schema_retries(string fault, int expected)
     {
         var f = new Fixture(fault);
@@ -77,11 +78,95 @@ public sealed class CreativeReviewRecoveryTests
         Assert.False(VideoGameDirectorAgent.ValidCreativeReview(new("accepted", "Unresolved decision", [], [], true)));
     }
 
+    [Fact]
+    public async Task An_exhausted_round_asks_the_owner_how_to_continue()
+    {
+        var f = new Fixture("exhausted");
+        var result = await new VideoGameDirectorAgent().HandleCoordinationTurnAsync(f.TurnRequest(), f.Context, default);
+        Assert.Equal("Blocked", result.Disposition);
+        Assert.StartsWith(VideoGameDirectorAgent.CreativeReviewWaitMarker, result.Content);
+        var decision = Assert.Single(f.Decisions);
+        Assert.Equal(VideoGameDirectorAgent.CreativeReviewDecisionType, decision.TypeKey);
+        Assert.Equal(VideoGameDirectorAgent.RetryCreativeReviewOption, decision.RecommendedOptionId);
+        Assert.Equal(new[] { VideoGameDirectorAgent.RetryCreativeReviewOption, VideoGameDirectorAgent.ReviseBriefOption,
+            VideoGameDirectorAgent.KeepCreativeReviewPausedOption }, decision.Options.Select(x => x.Id));
+        Assert.Equal(f.Session.Id, VideoGameDirectorAgent.CreativeReviewDecision(decision)!.SessionId);
+    }
+
+    [Theory]
+    [InlineData(VideoGameDirectorAgent.RetryCreativeReviewOption, "Continue")]
+    [InlineData(VideoGameDirectorAgent.ReviseBriefOption, "Blocked")]
+    [InlineData(VideoGameDirectorAgent.KeepCreativeReviewPausedOption, "Blocked")]
+    [InlineData(null, "Blocked")]
+    public async Task The_owners_choice_decides_whether_Naomi_gets_a_fresh_round(string? option, string expected)
+    {
+        var f = new Fixture("exhausted");
+        f.Decide(option);
+        var result = await new VideoGameDirectorAgent().HandleCoordinationTurnAsync(f.TurnRequest(), f.Context, default);
+        Assert.Equal(expected, result.Disposition);
+        if (expected == "Continue")
+        {
+            Assert.Contains("attempt 1/3", result.Content);
+            Assert.Equal(VideoGameDirectorAgent.CreativeReviewRequestType, result.Artifact!.Type);
+        }
+        Assert.Single(f.Decisions); // No second decision while one is pending or decided for this round.
+    }
+
+    [Theory]
+    [InlineData(VideoGameDirectorAgent.RetryCreativeReviewOption, 1)]
+    [InlineData(VideoGameDirectorAgent.KeepCreativeReviewPausedOption, 0)]
+    [InlineData(null, 0)]
+    public async Task Attention_recovery_resumes_an_exhausted_review_only_after_a_retry_choice(string? option, int expected)
+    {
+        var f = new Fixture("exhausted");
+        f.Decide(option);
+        await VideoGameDirectorAgent.RecoverIncompleteCreativeReviewAsync(f.Session.Id, f.Context, default);
+        Assert.Equal(expected, f.Resumes);
+    }
+
+    [Fact]
+    public async Task A_retry_choice_resumes_the_review_when_it_is_decided()
+    {
+        var f = new Fixture("exhausted");
+        f.Decide(VideoGameDirectorAgent.RetryCreativeReviewOption);
+        await VideoGameDirectorAgent.ReconcileCreativeReviewDecisionAsync(f.Decisions[0], f.Context, default);
+        Assert.Equal(1, f.Resumes);
+    }
+
+    [Fact]
+    public void Failures_are_counted_from_the_owners_latest_choice()
+    {
+        var creative = Guid.NewGuid(); var start = DateTimeOffset.UtcNow;
+        AgentCoordinationTurn Failure(int minutes) => new(Guid.NewGuid(), minutes, creative, "Blocked",
+            VideoGameDirectorAgent.InvalidCreativeReview, start.AddMinutes(minutes), null);
+        var turns = new[] { Failure(1), Failure(2), Failure(3), Failure(10) };
+        Assert.Equal(4, VideoGameDirectorAgent.CreativeReviewFailuresSince(turns, creative, null));
+        Assert.Equal(1, VideoGameDirectorAgent.CreativeReviewFailuresSince(turns, creative, start.AddMinutes(5)));
+    }
+
     private sealed class Fixture
     {
         public AgentCoordinationSession Session { get; }
         public AgentRuntimeContext Context { get; }
         public int Resumes;
+        public List<DecisionRecord> Decisions { get; } = [];
+        private Guid _project;
+
+        public AgentCoordinationTurnRequest TurnRequest() => new(Session.Id, 5, Session.Turns.Count, "Review", "Review exact evidence", [],
+            Session.Initiator, Session.Target, false, Session.Turns) { WorkContext = Session.WorkContext };
+
+        // Records the owner's choice after the earlier failures, as the platform would.
+        public void Decide(string? option)
+        {
+            var now = DateTimeOffset.UtcNow.AddMinutes(1);
+            var binding = new VideoGameDirectorAgent.CreativeReviewDecisionContext(Session.Id, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "brief-hash", null);
+            Decisions.Add(new(Guid.NewGuid(), _project, VideoGameDirectorAgent.CreativeReviewDecisionType, "Review could not complete",
+                "material-strategy-change", [new(VideoGameDirectorAgent.RetryCreativeReviewOption, "Retry", null),
+                    new(VideoGameDirectorAgent.KeepCreativeReviewPausedOption, "Keep", null)], VideoGameDirectorAgent.RetryCreativeReviewOption,
+                option, option is null ? DecisionStatuses.Pending : DecisionStatuses.Decided, option is null ? null : "Owner choice", [], null, null, null, 2,
+                now, now, JsonSerializer.SerializeToElement(new { creativeReview = binding }, new JsonSerializerOptions(JsonSerializerDefaults.Web))));
+        }
+
         public Fixture(string fault)
         {
             var director = Guid.NewGuid(); var creative = Guid.NewGuid(); var project = Guid.NewGuid(); var team = Guid.NewGuid();
@@ -100,7 +185,18 @@ public sealed class CreativeReviewRecoveryTests
                 new(director, Guid.NewGuid(), "Marcus", "Director"), new(creative, Guid.NewGuid(), "Naomi", "Creative Director"),
                 "Review", "Review exact evidence", [], "Blocked", 4, 3, null, false, "Incomplete review", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, turns)
                 { WorkContext = new(Guid.NewGuid(), project, team, null, null, null, null, Guid.NewGuid(), null, null) };
+            _project = project;
             var runtime = new AgentTestRuntime()
+                .RegisterCapability<ReadDecisionRequest, IReadOnlyList<DecisionRecord>>(DecisionCapabilityNames.ReadV1,
+                    (_, _) => Task.FromResult<IReadOnlyList<DecisionRecord>>(Decisions.ToList()))
+                .RegisterCapability<DecisionRequest, DecisionRecord>(DecisionCapabilityNames.RequestV1, (r, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var decision = new DecisionRecord(Guid.NewGuid(), r.WorkstreamId, r.TypeKey, r.Summary, r.AuthorityRuleKey, r.Options,
+                        r.RecommendedOptionId, null, DecisionStatuses.Pending, null, r.Evidence, null, null, r.DueAt, 1, now, now, r.TypeData);
+                    Decisions.Add(decision);
+                    return Task.FromResult(decision);
+                })
                 .RegisterCapability<ListAgentCoordinationRequest, AgentCoordinationSessions>(CommunicationCapabilities.CoordinationList,
                     (_, _) => Task.FromResult(new AgentCoordinationSessions([Session])))
                 .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(Session))

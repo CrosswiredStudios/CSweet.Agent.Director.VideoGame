@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CSweet.Agent.SDK;
+using CSweet.WorkManagement.Contracts;
 using CrosswiredStudios.VideoGame.PitchCollaboration;
 using CrosswiredStudios.VideoGame.ProductionReview;
 
@@ -86,14 +87,19 @@ public sealed partial class VideoGameDirectorAgent
             initial.PitchSha256 == state.AcceptedVision?.ArtifactRevisionHash &&
             target is { Disposition: "Blocked", Artifact: null } && IsInvalidCreativeReview(target.Content))
         {
-            var failures = request.Transcript.Count(x => x.SpeakerOrganizationUserId == state.CreativeDirectorEmployeeId && IsInvalidCreativeReview(x.Content));
+            var (latest, decisionCount) = await ReadCreativeReviewDecisionAsync(initial.WorkstreamId, request.SessionId, context, token);
+            if (CreativeReviewHold(latest) is { } hold) return AgentCoordinationTurnResult.Blocked(hold);
+            var failures = CreativeReviewFailuresSince(request.Transcript, request.Counterpart.OrganizationUserId, CreativeReviewRoundStart(latest));
             var reason = InvalidCreativeReviewReason(target.Content) is { Length: > 0 } problem ? $" It was rejected because {problem}." : "";
-            if (!request.IsFinalization && failures < 3)
+            if (!request.IsFinalization && failures < CreativeReviewAttempts)
                 return AgentCoordinationTurnResult.Continue(
                     $"Naomi, retry the exact creative review after the response-contract failure (attempt {failures + 1}/3).{reason} Return substantive findings and a consistent disposition; unresolved Director questions may accompany changes-required. Do not approve incomplete evidence.",
                     request.Transcript.First(x => x.Artifact?.Type == CreativeReviewRequestType).Artifact is { } original
                         ? new(CreativeReviewRequestType, "1.0", initial.Sha256, 1, true, original.Payload) : null);
-            return AgentCoordinationTurnResult.Blocked("Naomi's creative review response is incomplete; the exact evidence is retained for bounded recovery. " + target.Content);
+            if (request.IsFinalization)
+                return AgentCoordinationTurnResult.Blocked("Naomi's creative review response is incomplete; the exact evidence is retained for bounded recovery. " + target.Content);
+            // The round is used up: the owner chooses whether to retry, revise the brief or keep it paused.
+            return await RaiseCreativeReviewDecisionAsync(request, initial, InvalidCreativeReviewReason(target.Content), decisionCount, context, token);
         }
         var artifact = request.Transcript.LastOrDefault(x => x.SpeakerOrganizationUserId == state.CreativeDirectorEmployeeId &&
             x.Artifact?.Type == CreativeReviewResultType)?.Artifact;
@@ -145,17 +151,22 @@ public sealed partial class VideoGameDirectorAgent
         var session = await context.Platform.Communication.ReadCoordinationAsync(sessionId, token);
         if (session.Status != "Blocked" || session.Initiator.OrganizationUserId.ToString("D") != context.Identity?.EmployeeId) return;
         var last = session.Turns.LastOrDefault(x => x.SpeakerOrganizationUserId == session.Target.OrganizationUserId);
-        if (last is not { Disposition: "Blocked", Artifact: null } || !IsInvalidCreativeReview(last.Content) ||
-            session.Turns.Count(x => x.SpeakerOrganizationUserId == session.Target.OrganizationUserId && IsInvalidCreativeReview(x.Content)) >= 3) return;
+        if (last is not { Disposition: "Blocked", Artifact: null } || !IsInvalidCreativeReview(last.Content)) return;
         var input = session.Turns.FirstOrDefault(x => x.SpeakerOrganizationUserId == session.Initiator.OrganizationUserId &&
             x.Artifact?.Type == CreativeReviewRequestType)?.Artifact?.Payload.Deserialize<CreativeReviewRequest>(ProjectApprovalJson);
         if (input is null || input.WorkstreamId != session.WorkContext?.WorkstreamId || input.TeamId != session.WorkContext?.TeamId) return;
+        // While the owner's choice is pending or says not to retry, nothing resumes. A used-up round with no pending
+        // choice (for example one blocked before owner decisions existed) resumes once so my turn raises that choice.
+        var (latest, _) = await ReadCreativeReviewDecisionAsync(input.WorkstreamId, session.Id, context, token);
+        if (CreativeReviewHold(latest) is not null) return;
+        var exhausted = CreativeReviewFailuresSince(session.Turns, session.Target.OrganizationUserId, CreativeReviewRoundStart(latest)) >= CreativeReviewAttempts;
         var current = await ReadStateByKeyAsync(ProjectStateKey(input.WorkstreamId, null), context, token);
         if (current.State.CreativeDirectorEmployeeId != session.Target.OrganizationUserId ||
             current.State.HandoffSessionId != input.ParentSessionId || current.State.AcceptedVision is not { } pitch ||
             pitch.ArtifactId != input.PitchArtifactId || pitch.ArtifactRevisionId != input.PitchRevisionId || pitch.ArtifactRevisionHash != input.PitchSha256) return;
         await context.Platform.Communication.ResumeCoordinationAsync(session.Id, session.Revision,
-            "Recover the incomplete creative response for the same approved pitch and exact brief revision.",
+            exhausted ? "Ask the owner how to continue the creative review after its attempts were used up."
+                : "Recover the incomplete creative response for the same approved pitch and exact brief revision.",
             $"creative-response-recovery:{session.Id:N}:{session.Revision}", token);
     }
 

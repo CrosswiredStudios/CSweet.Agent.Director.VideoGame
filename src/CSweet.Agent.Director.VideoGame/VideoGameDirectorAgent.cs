@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.6.6";
+    public override string Version => "0.6.7";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -235,6 +235,11 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (PitchDecision(decision) is not null)
         {
             await ReconcilePitchDecisionAsync(current.State, context, cancellationToken);
+            return;
+        }
+        if (CreativeReviewDecision(decision) is not null)
+        {
+            await ReconcileCreativeReviewDecisionAsync(decision, context, cancellationToken);
             return;
         }
         if (decision.TypeKey == "video-game.management-direction.v1")
