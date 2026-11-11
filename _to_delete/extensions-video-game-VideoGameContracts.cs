@@ -67,6 +67,28 @@ public sealed record GameProposedWorkItemV1(
     IReadOnlyList<string> DependencyProposalKeys)
 {
     public string? ParentProposalKey { get; init; }
+    /// <summary>
+    /// Browser evidence the task's candidate must carry; one of <see cref="GameBrowserVerification"/>. <c>null</c> on
+    /// proposals made before this field existed. Omitted from JSON when null so retained proposal digests do not change.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? BrowserVerification { get; init; }
+}
+
+/// <summary>
+/// Per-task browser verification a plan declares. The Producer records it on the ticket as a work-item verification
+/// requirement, which the engineer binds, the technical reviewer checks and QA reproduces.
+/// </summary>
+public static class GameBrowserVerification
+{
+    /// <summary>Launch the built game in real Chromium and require a visible canvas.</summary>
+    public const string Canvas = "canvas";
+    /// <summary>Launch the built page in real Chromium; no canvas required.</summary>
+    public const string Page = "page";
+    /// <summary>No browser evidence: the task changes no runnable browser output.</summary>
+    public const string None = "none";
+
+    public static IReadOnlyList<string> All { get; } = [Canvas, Page, None];
 }
 
 public sealed record GameDesignerBacklogProposalV1(

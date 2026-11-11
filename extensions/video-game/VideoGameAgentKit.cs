@@ -211,7 +211,7 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
         cancellationToken.ThrowIfCancellationRequested();
         var estimateArtifact = request.Transcript.LastOrDefault(x =>
             x.Artifact?.Type == "video-game.production.role-estimate-request.v1")?.Artifact;
-        var estimateRequest = estimateArtifact?.Payload.Deserialize<CrosswiredStudios.VideoGame.Contracts.GameRoleEstimateCapacityRequestV1>();
+        var estimateRequest = estimateArtifact?.Payload.Deserialize<CSweet.Agent.SDK.VideoGame.Contracts.GameRoleEstimateCapacityRequestV1>();
         if (estimateRequest is not null)
         {
             if (!string.Equals(estimateRequest.RoleKey, RoleKey, StringComparison.Ordinal) ||
@@ -224,7 +224,7 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
                 return Task.FromResult(AgentCoordinationTurnResult.Blocked(
                     "The estimate request is stale, empty, or addressed to a different accountable role."));
             var estimates = estimateRequest.WorkItems.OrderBy(x => x.WorkItemId)
-                .Select(x => new CrosswiredStudios.VideoGame.Contracts.GameWorkItemEstimateV1(x.WorkItemId,
+                .Select(x => new CSweet.Agent.SDK.VideoGame.Contracts.GameWorkItemEstimateV1(x.WorkItemId,
                     Math.Clamp(1m + x.AcceptanceCriteria.Count + x.DependencyWorkItemIds.Count, 1m, 13m),
                     x.Constraints.Count + x.DependencyWorkItemIds.Count > 3 ? "low" : "medium"))
                 .ToList();
@@ -234,7 +234,7 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
                 RoleKey,
                 Items = estimates.Select(x => new { x.WorkItemId, x.EstimatePoints, x.Confidence })
             });
-            var proposal = new CrosswiredStudios.VideoGame.Contracts.GameRoleEstimateCapacityProposalV1(
+            var proposal = new CSweet.Agent.SDK.VideoGame.Contracts.GameRoleEstimateCapacityProposalV1(
                 estimateRequest.BoardId, RoleKey, estimateRequest.PlanningRevision,
                 estimateRequest.PlanningDigest, estimates, estimates.Sum(x => x.EstimatePoints),
                 ["Initial role-owned estimate assumes approved inputs, available toolchain, and no unresolved dependency."],
@@ -248,10 +248,10 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
 
         var qaArtifact = request.Transcript.LastOrDefault(x =>
             x.Artifact?.Type == "video-game.production.qa-readiness-request.v1")?.Artifact;
-        var qaRequest = qaArtifact?.Payload.Deserialize<CrosswiredStudios.VideoGame.Contracts.GameQaSprintReadinessRequestV1>();
+        var qaRequest = qaArtifact?.Payload.Deserialize<CSweet.Agent.SDK.VideoGame.Contracts.GameQaSprintReadinessRequestV1>();
         if (qaRequest is not null)
         {
-            if (RoleKey != CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.QualityAssurance ||
+            if (RoleKey != CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.QualityAssurance ||
                 qaRequest.Candidates.Count == 0 || qaRequest.PlanningRevision <= 0 ||
                 string.IsNullOrWhiteSpace(qaRequest.PlanningDigest))
                 return Task.FromResult(AgentCoordinationTurnResult.Blocked(
@@ -260,23 +260,23 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
                 new[]
                 {
                     candidate.Requirements.Count == 0
-                        ? new CrosswiredStudios.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
+                        ? new CSweet.Agent.SDK.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
                             "requirements-missing", true, "Testable requirements are missing.") : null,
                     candidate.AcceptanceCriteria.Count == 0
-                        ? new CrosswiredStudios.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
+                        ? new CSweet.Agent.SDK.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
                             "acceptance-missing", true, "Testable acceptance criteria are missing.") : null,
                     candidate.EstimatePoints is null or <= 0 || string.IsNullOrWhiteSpace(candidate.EstimateSourceDigest)
-                        ? new CrosswiredStudios.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
+                        ? new CSweet.Agent.SDK.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
                             "estimate-provenance-missing", true, "A positive role-owned estimate with source evidence is required.") : null,
                     string.IsNullOrWhiteSpace(candidate.ArtifactPackageDigest) ||
                     string.IsNullOrWhiteSpace(candidate.AssignmentDecisionFingerprint)
-                        ? new CrosswiredStudios.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
+                        ? new CSweet.Agent.SDK.VideoGame.Contracts.GameReadinessFindingV1(candidate.WorkItemId,
                             "assignment-evidence-missing", true, "Artifact-package and exact assignment evidence are required.") : null
-                }.Where(x => x is not null).Cast<CrosswiredStudios.VideoGame.Contracts.GameReadinessFindingV1>()).ToList();
+                }.Where(x => x is not null).Cast<CSweet.Agent.SDK.VideoGame.Contracts.GameReadinessFindingV1>()).ToList();
             var readyIds = qaRequest.Candidates.Where(candidate => findings.All(x => x.WorkItemId != candidate.WorkItemId))
                 .Select(x => x.WorkItemId).Distinct().OrderBy(x => x).ToList();
             var digest = CoordinationFingerprint(new { qaRequest.RequestFingerprint, ReadyIds = readyIds, Findings = findings });
-            var assessment = new CrosswiredStudios.VideoGame.Contracts.GameQaSprintReadinessAssessmentV1(
+            var assessment = new CSweet.Agent.SDK.VideoGame.Contracts.GameQaSprintReadinessAssessmentV1(
                 Guid.Empty, qaRequest.PlanningRevision, qaRequest.PlanningDigest,
                 findings.Count == 0, readyIds, findings, digest);
             return Task.FromResult(AgentCoordinationTurnResult.Completed(
@@ -288,40 +288,40 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
 
         var artifact = request.Transcript.LastOrDefault(x =>
             x.Artifact?.Type == "video-game.production.planning-cycle.v1")?.Artifact;
-        var cycle = artifact?.Payload.Deserialize<CrosswiredStudios.VideoGame.Contracts.GameProductionPlanningCycleV1>();
+        var cycle = artifact?.Payload.Deserialize<CSweet.Agent.SDK.VideoGame.Contracts.GameProductionPlanningCycleV1>();
         if (cycle is null)
             return Task.FromResult(AgentCoordinationTurnResult.Blocked(
                 "A current, typed production planning cycle is required."));
 
-        if (RoleKey == CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.GameDesigner)
+        if (RoleKey == CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.GameDesigner)
         {
-            var items = new CrosswiredStudios.VideoGame.Contracts.GameProposedWorkItemV1[]
+            var items = new CSweet.Agent.SDK.VideoGame.Contracts.GameProposedWorkItemV1[]
             {
-                new("feature-core-player-loop", CrosswiredStudios.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Feature,
+                new("feature-core-player-loop", CSweet.Agent.SDK.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Feature,
                     "Core player loop", "Deliver the player-facing core loop defined by the accepted vision.",
                     ["The accepted vision's core-loop outcome is demonstrable and measurable."], "", [], [], [], []),
-                new("design-core-player-loop", CrosswiredStudios.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
+                new("design-core-player-loop", CSweet.Agent.SDK.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
                     "Specify the core player loop", "Turn the accepted vision into falsifiable gameplay rules, states, feedback, failure, recovery, and tuning variables.",
                     ["Rules, state transitions, feedback, edge cases, instrumentation, and validation criteria are explicit."],
-                    CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.GameDesigner,
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.GameDesign,
-                     CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.Gameplay],
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.PrototypeDesign],
+                    CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.GameDesigner,
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.GameDesign,
+                     CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.Gameplay],
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.PrototypeDesign],
                     [WorkManagementCapabilityNames.ExecutionRun], [])
                 { ParentProposalKey = "feature-core-player-loop" },
-                new("research-core-player-loop", CrosswiredStudios.VideoGame.Contracts.VideoGameWorkItemTypeKeys.ResearchSpike,
+                new("research-core-player-loop", CSweet.Agent.SDK.VideoGame.Contracts.VideoGameWorkItemTypeKeys.ResearchSpike,
                     "Plan core-loop player validation", "Define a consent-governed playtest that tests comprehension, engagement, failure, and recovery for the approved loop.",
                     ["Research questions, participant criteria, tasks, measures, consent, and decision thresholds are explicit."],
-                    CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.PlaytestResearcher,
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.PlaytestPlanning,
-                     CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.ConsentGovernance],
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.ResearchAnalysis],
+                    CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.PlaytestResearcher,
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.PlaytestPlanning,
+                     CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.ConsentGovernance],
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.ResearchAnalysis],
                     [WorkManagementCapabilityNames.ExecutionRun], ["design-core-player-loop"])
                 { ParentProposalKey = "feature-core-player-loop" }
             };
             var digest = ArtifactPackageDigestCalculator.Calculate(cycle.ApprovedPackageId,
                 cycle.ApprovedPackageVersion, []);
-            var proposal = new CrosswiredStudios.VideoGame.Contracts.GameDesignerBacklogProposalV1(cycle, items,
+            var proposal = new CSweet.Agent.SDK.VideoGame.Contracts.GameDesignerBacklogProposalV1(cycle, items,
                 ["Do not depart from the accepted player outcome, pillars, scope, or non-goals."], [], digest);
             return Task.FromResult(AgentCoordinationTurnResult.Completed(
                 "Submitted a player-outcome backlog proposal; technical feasibility and estimates remain with their authorities.",
@@ -329,33 +329,33 @@ public abstract class VideoGameSpecialistAgentBase : CSweetAgentBase
                     cycle.PlanningFingerprint, 1, true, JsonSerializer.SerializeToElement(proposal))));
         }
 
-        if (RoleKey == CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.TechnicalDirector)
+        if (RoleKey == CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.TechnicalDirector)
         {
-            var items = new CrosswiredStudios.VideoGame.Contracts.GameProposedWorkItemV1[]
+            var items = new CSweet.Agent.SDK.VideoGame.Contracts.GameProposedWorkItemV1[]
             {
-                new("implement-core-player-loop", CrosswiredStudios.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
+                new("implement-core-player-loop", CSweet.Agent.SDK.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
                     "Implement the core-loop prototype", "Implement the approved gameplay-system specification inside the accepted engine and performance constraints.",
                     ["A runnable, instrumented build demonstrates the specified loop and automated checks cover its critical state transitions."],
-                    CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.Engineer,
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.GameplayProgramming,
-                     CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.EngineIntegration],
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.AutomatedTesting],
+                    CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.Engineer,
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.GameplayProgramming,
+                     CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.EngineIntegration],
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.AutomatedTesting],
                     [WorkManagementCapabilityNames.ExecutionRun], ["design-core-player-loop"])
                 { ParentProposalKey = "feature-core-player-loop" },
-                new("qa-core-player-loop", CrosswiredStudios.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
+                new("qa-core-player-loop", CSweet.Agent.SDK.VideoGame.Contracts.VideoGameWorkItemTypeKeys.Task,
                     "Validate the core-loop prototype", "Validate the runnable prototype against its accepted criteria and produce reproducible defects and regression evidence.",
                     ["Build identity, test coverage, results, defects, regressions, compatibility, and accessibility findings are evidence-backed."],
-                    CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.QualityAssurance,
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.TestPlanning,
-                     CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.BuildValidation],
-                    [CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.RegressionTesting,
-                     CrosswiredStudios.VideoGame.Contracts.VideoGameSpecializationKeys.AccessibilityTesting],
+                    CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.QualityAssurance,
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.TestPlanning,
+                     CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.BuildValidation],
+                    [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.RegressionTesting,
+                     CSweet.Agent.SDK.VideoGame.Contracts.VideoGameSpecializationKeys.AccessibilityTesting],
                     [WorkManagementCapabilityNames.ExecutionRun], ["implement-core-player-loop"])
                 { ParentProposalKey = "feature-core-player-loop" }
             };
             var digest = ArtifactPackageDigestCalculator.Calculate(cycle.ApprovedPackageId,
                 cycle.ApprovedPackageVersion, []);
-            var proposal = new CrosswiredStudios.VideoGame.Contracts.GameTechnicalDeliveryProposalV1(cycle, items,
+            var proposal = new CSweet.Agent.SDK.VideoGame.Contracts.GameTechnicalDeliveryProposalV1(cycle, items,
                 ["Feasibility is conditional on the exact accepted engine, target, and performance constraints in the approved package."],
                 ["No technical estimate is asserted by this planning proposal."], [], digest);
             return Task.FromResult(AgentCoordinationTurnResult.Completed(

@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using CSweet.Agent.SDK;
 using CSweet.WorkManagement.Contracts;
-using CrosswiredStudios.VideoGame.Contracts;
+using CSweet.Agent.SDK.VideoGame.Contracts;
 using Microsoft.Extensions.AI;
 
 namespace CSweet.Agent.Director.VideoGame;

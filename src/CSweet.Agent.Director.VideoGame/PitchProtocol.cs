@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using CSweet.Agent.SDK;
-using CrosswiredStudios.VideoGame.Contracts;
+using CSweet.Agent.SDK.VideoGame.Contracts;
 using CrosswiredStudios.VideoGame.ProductionReview;
 
 namespace CrosswiredStudios.VideoGame.PitchCollaboration;

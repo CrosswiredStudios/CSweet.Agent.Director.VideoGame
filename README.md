@@ -1,4 +1,8 @@
-# Video Game Director 0.6.4
+# Video Game Director 0.6.5
+
+Uses the optional `CSweet.Agent.SDK.VideoGame.Contracts` 1.0.0 NuGet package for the shared video-game contracts instead of compiling its own `extensions/video-game/VideoGameContracts.cs` copy.
+
+## Video Game Director 0.6.4
 
 Every leadership handoff the Director starts now has an owning card on the game board: the production brief, the creative review, the build-capacity request and the toolchain feasibility review, alongside the proposal and the design document. A handoff that is waiting on someone shows who and why; a failed one is Blocked with Retry.
 

@@ -27,5 +27,5 @@ public sealed partial class VideoGameDirectorAgent
 
     internal static bool WasPreviouslyStaffed(GameDirectorOperatingState state, Guid teamId, string roleKey) =>
         state.TeamId == teamId && (state.SpecialistEmployeeIds.ContainsKey(roleKey) ||
-            roleKey == CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.Producer && state.ProducerEmployeeId.HasValue);
+            roleKey == CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.Producer && state.ProducerEmployeeId.HasValue);
 }

@@ -48,7 +48,7 @@ public sealed class ProductionCommitmentTests
     {
         var assets = VideoGameDirectorAgent.BuildAssetStrategyQuestion();
         var build = VideoGameDirectorAgent.BuildUnavailableToolchainQuestion(
-            CrosswiredStudios.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D);
+            CSweet.Agent.SDK.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D);
 
         Assert.Contains("visual and audio assets", assets);
         Assert.DoesNotContain("{", assets);
@@ -80,14 +80,14 @@ public sealed class ProductionCommitmentTests
             ManagerPreferences = new ManagerPreferenceProfile { EnginePreferences = ["latest Phaser"] },
             SpecialistEmployeeIds = new Dictionary<string, Guid>
             {
-                [CrosswiredStudios.VideoGame.Contracts.VideoGameRoleKeys.TechnicalDirector] = Guid.NewGuid()
+                [CSweet.Agent.SDK.VideoGame.Contracts.VideoGameRoleKeys.TechnicalDirector] = Guid.NewGuid()
             }
         };
         var runtime = RosterRuntime(state, [Technical(state.SpecialistEmployeeIds.Values.Single())])
             .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
                 PlatformCapabilities.ToolchainCatalogRead, (request, _) =>
                 {
-                    Assert.Equal(CrosswiredStudios.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D,
+                    Assert.Equal(CSweet.Agent.SDK.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D,
                         request.RecipeKey);
                     return Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]);
                 })

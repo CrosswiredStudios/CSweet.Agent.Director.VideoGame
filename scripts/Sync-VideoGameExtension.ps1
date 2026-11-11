@@ -10,7 +10,8 @@ $ownerMetadata = Get-Content -LiteralPath (Join-Path $source 'extension.json') -
 $names = @('ArtDirector.VideoGame','Artist.VideoGame','AudioDesigner.VideoGame','BuildReleaseEngineer.VideoGame',
     'CreativeDirector.VideoGame','Engineer.VideoGame','GameDesigner','LevelDesigner.VideoGame','NarrativeDesigner.VideoGame',
     'PlaytestResearcher.VideoGame','Producer.VideoGame','QA.VideoGame','TechnicalArtist.VideoGame','TechnicalDirector.VideoGame','UiUxAccessibilityDesigner.VideoGame')
-$files = @('VideoGameContracts.cs','VideoGameAgentKit.cs','README.md')
+# Shared wire contracts moved to the CSweet.Agent.SDK.VideoGame.Contracts package (extension 2.0.0).
+$files = @('VideoGameAgentKit.cs','README.md')
 $ownerHashes = @{}
 foreach ($file in $files) { $ownerHashes[$file] = (Get-FileHash -LiteralPath (Join-Path $source $file) -Algorithm SHA256).Hash.ToLowerInvariant() }
 # Reconcile source changes individually before calling this command. Never copy
