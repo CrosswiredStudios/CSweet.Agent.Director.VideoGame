@@ -10,6 +10,15 @@ public sealed partial class VideoGameDirectorAgent
     internal const string CreativeReviewRequestType = "video-game.creative-review.request.v1";
     internal const string CreativeReviewResultType = "video-game.creative-review.result.v1";
     internal const string InvalidCreativeReview = "Creative review did not return actionable, consistent findings.";
+    internal const string InvalidCreativeReviewReasonPrefix = InvalidCreativeReview + " Reason: ";
+
+    // The Creative Director may append the exact validation problem (" Reason: ...") after the fixed text.
+    internal static bool IsInvalidCreativeReview(string? content) => content == InvalidCreativeReview ||
+        content?.StartsWith(InvalidCreativeReviewReasonPrefix, StringComparison.Ordinal) == true;
+
+    internal static string? InvalidCreativeReviewReason(string? content) =>
+        content?.StartsWith(InvalidCreativeReviewReasonPrefix, StringComparison.Ordinal) == true
+            ? content[InvalidCreativeReviewReasonPrefix.Length..].Trim() : null;
     private const string CreativeReviewIndexKey = "director-creative-review-parents";
     internal sealed record CreativeReviewRequest(Guid WorkstreamId, Guid TeamId, Guid PitchArtifactId, Guid PitchRevisionId,
         string PitchSha256, Guid DocumentId, Guid RevisionId, string Sha256, string Purpose, Guid? ParentSessionId = null)
@@ -75,12 +84,13 @@ public sealed partial class VideoGameDirectorAgent
         if (initial is not null && request.Counterpart.OrganizationUserId == state.CreativeDirectorEmployeeId &&
             initial.WorkstreamId == state.WorkstreamId && initial.TeamId == state.TeamId &&
             initial.PitchSha256 == state.AcceptedVision?.ArtifactRevisionHash &&
-            target is { Disposition: "Blocked", Artifact: null, Content: InvalidCreativeReview })
+            target is { Disposition: "Blocked", Artifact: null } && IsInvalidCreativeReview(target.Content))
         {
-            var failures = request.Transcript.Count(x => x.SpeakerOrganizationUserId == state.CreativeDirectorEmployeeId && x.Content == InvalidCreativeReview);
+            var failures = request.Transcript.Count(x => x.SpeakerOrganizationUserId == state.CreativeDirectorEmployeeId && IsInvalidCreativeReview(x.Content));
+            var reason = InvalidCreativeReviewReason(target.Content) is { Length: > 0 } problem ? $" It was rejected because {problem}." : "";
             if (!request.IsFinalization && failures < 3)
                 return AgentCoordinationTurnResult.Continue(
-                    $"Naomi, retry the exact creative review after the response-contract failure (attempt {failures + 1}/3). Return substantive findings and a consistent disposition; unresolved Director questions may accompany changes-required. Do not approve incomplete evidence.",
+                    $"Naomi, retry the exact creative review after the response-contract failure (attempt {failures + 1}/3).{reason} Return substantive findings and a consistent disposition; unresolved Director questions may accompany changes-required. Do not approve incomplete evidence.",
                     request.Transcript.First(x => x.Artifact?.Type == CreativeReviewRequestType).Artifact is { } original
                         ? new(CreativeReviewRequestType, "1.0", initial.Sha256, 1, true, original.Payload) : null);
             return AgentCoordinationTurnResult.Blocked("Naomi's creative review response is incomplete; the exact evidence is retained for bounded recovery. " + target.Content);
@@ -135,8 +145,8 @@ public sealed partial class VideoGameDirectorAgent
         var session = await context.Platform.Communication.ReadCoordinationAsync(sessionId, token);
         if (session.Status != "Blocked" || session.Initiator.OrganizationUserId.ToString("D") != context.Identity?.EmployeeId) return;
         var last = session.Turns.LastOrDefault(x => x.SpeakerOrganizationUserId == session.Target.OrganizationUserId);
-        if (last is not { Disposition: "Blocked", Artifact: null, Content: InvalidCreativeReview } ||
-            session.Turns.Count(x => x.SpeakerOrganizationUserId == session.Target.OrganizationUserId && x.Content == InvalidCreativeReview) >= 3) return;
+        if (last is not { Disposition: "Blocked", Artifact: null } || !IsInvalidCreativeReview(last.Content) ||
+            session.Turns.Count(x => x.SpeakerOrganizationUserId == session.Target.OrganizationUserId && IsInvalidCreativeReview(x.Content)) >= 3) return;
         var input = session.Turns.FirstOrDefault(x => x.SpeakerOrganizationUserId == session.Initiator.OrganizationUserId &&
             x.Artifact?.Type == CreativeReviewRequestType)?.Artifact?.Payload.Deserialize<CreativeReviewRequest>(ProjectApprovalJson);
         if (input is null || input.WorkstreamId != session.WorkContext?.WorkstreamId || input.TeamId != session.WorkContext?.TeamId) return;

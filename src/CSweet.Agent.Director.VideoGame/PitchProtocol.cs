@@ -38,6 +38,22 @@ internal static class PitchProtocol
     public const string ReplyType = "video-game.production.pitch-reply.v1";
     public const string DocumentType = "video-game.production-plan.v1";
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    // Derives an absent suggested replacement and names, for the model to correct, what code cannot settle.
+    internal static DirectorReview NormalizeDirectorReview(DirectorReview review)
+    {
+        var problems = new List<string>();
+        if (string.IsNullOrWhiteSpace(review.Guidance)) problems.Add("guidance is empty");
+        else if (review.Guidance.Length > 16000) problems.Add($"guidance has {review.Guidance.Length} characters; shorten it to at most 16000");
+        var suggested = review.SuggestedMarkdown ?? "";
+        if (suggested.Length > 48000) problems.Add($"suggestedMarkdown has {suggested.Length} characters; return an empty string or at most 48000");
+        if (review.RequiresOwner && string.IsNullOrWhiteSpace(review.OwnerQuestion))
+            problems.Add("requiresOwner needs one focused ownerQuestion; otherwise set requiresOwner to false");
+        else if (review.RequiresOwner && review.OwnerQuestion!.Length > 3000)
+            problems.Add($"ownerQuestion has {review.OwnerQuestion.Length} characters; ask one focused question of at most 3000");
+        if (problems.Count > 0) throw new AgentModelJsonException(string.Join("; ", problems));
+        return review with { SuggestedMarkdown = suggested, OwnerQuestion = review.RequiresOwner ? review.OwnerQuestion : null };
+    }
+
     public static DirectorReview? ParseDirectorReview(string response)
     {
         // Providers may wrap the JSON in a code fence or append reasoning markup. Read the first

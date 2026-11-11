@@ -39,7 +39,7 @@ public sealed partial class VideoGameDirectorAgent
             var provider = Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure the Video Game Director LLM provider.");
             var client = context.CreateChatClient(new AgentLlmSelection(provider, Settings.GetString("llmModel"),
                 new AgentLlmInvocationContext(null, null, "director-production-baseline-review")));
-            var response = await client.GetResponseAsync([
+            return await AgentModelJson.ReadAsync(client, [
                 new ChatMessage(ChatRole.System, AgentInteractionInstructions.Compose("""
                     Collaborate with the Producer to turn the accepted pitch into a sufficient production brief.
                     Naomi has reviewed this exact draft for creative consistency. RequiresDirector means
@@ -87,13 +87,12 @@ public sealed partial class VideoGameDirectorAgent
                         ["approved-scope", "resources", "business-constraints"], ["portfolio-direction"],
                         AgentInteractionResponseContracts.DecisionAndNextDirective) { CounterpartRoleKey = "game-producer" })),
                 new ChatMessage(ChatRole.User, $"Accepted pitch:\n{pitch.Markdown}\nCreative findings:\n{JsonSerializer.Serialize(creative, PitchProtocol.Json)}\nProducer review:\n{JsonSerializer.Serialize(review, PitchProtocol.Json)}\nShared draft:\n{ProductionSources.WorkingBrief(revision.Content)}\nConversation:\n{JsonSerializer.Serialize(request.Transcript.Select(x => new { x.SpeakerOrganizationUserId, x.Content }), PitchProtocol.Json)}")
-            ], new ChatOptions { MaxOutputTokens = ResolvePitchOutputTokens(Settings) }, token);
-            var result = PitchProtocol.ParseDirectorReview(response.Text);
-            if (result is null || string.IsNullOrWhiteSpace(result.Guidance) || result.Guidance.Length > 16000 ||
-                result.SuggestedMarkdown is null || result.SuggestedMarkdown.Length > 48000 ||
-                result.RequiresOwner && (string.IsNullOrWhiteSpace(result.OwnerQuestion) || result.OwnerQuestion.Length > 3000))
-                throw new InvalidOperationException("The Video Game Director must answer the Producer with bounded substantive guidance.");
-            return result;
+            ], new AgentModelJsonRequest<DirectorReview>("production brief review")
+            {
+                SerializerOptions = PitchProtocol.Json,
+                Options = new ChatOptions { MaxOutputTokens = ResolvePitchOutputTokens(Settings) },
+                Normalize = PitchProtocol.NormalizeDirectorReview
+            }, token);
         }, token);
         var repeated = request.Transcript.Where(x => x.SpeakerOrganizationUserId == request.Counterpart.OrganizationUserId &&
                 x.Artifact?.Type == PitchProtocol.ReviewType)

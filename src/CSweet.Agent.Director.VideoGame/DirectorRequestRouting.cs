@@ -97,8 +97,10 @@ public sealed partial class VideoGameDirectorAgent
     private async Task<DirectorRequestRoute> ClassifyDirectorRequestAsync(string text, AgentRuntimeContext context, CancellationToken token)
     {
         var client = CreateDelegationChatClient(context, null, "director-request-ownership");
-        var response = await client.GetResponseAsync([
-            new(ChatRole.System, AgentInteractionInstructions.Compose("""
+        try
+        {
+            return await AgentModelJson.ReadAsync(client, [
+                new(ChatRole.System, AgentInteractionInstructions.Compose("""
                 Identify the accountable owner of the CURRENT request. Return JSON {owner,reason}.
                 owner is creative, delivery, platform, or director. Do not infer ownership merely from mentions
                 of a game, design, a creative role, or quoted history. Creative owns creative pillars, player
@@ -112,15 +114,22 @@ public sealed partial class VideoGameDirectorAgent
                 """, new(AgentInteractionModes.Lead, "request-ownership",
                     ["approved-scope", "resources", "business-constraints"], ["portfolio-direction"],
                     AgentInteractionResponseContracts.DecisionAndNextDirective))),
-            new(ChatRole.User, text)
-        ], new ChatOptions { MaxOutputTokens = 800 }, token);
-        var start = response.Text.IndexOf('{'); var end = response.Text.LastIndexOf('}');
-        var route = start >= 0 && end >= start ? JsonSerializer.Deserialize<DirectorRequestRoute>(response.Text[start..(end + 1)],
-            new JsonSerializerOptions(JsonSerializerDefaults.Web)) : null;
-        if (route is null || route.Owner is not ("creative" or "delivery" or "platform" or "director") ||
-            string.IsNullOrWhiteSpace(route.Reason) || route.Reason.Length > 1000)
-            throw new InvalidOperationException("The Director must identify a bounded accountable owner before delegating work.");
-        return route;
+                new(ChatRole.User, text)
+            ], new AgentModelJsonRequest<DirectorRequestRoute>("request ownership")
+            {
+                Options = new ChatOptions { MaxOutputTokens = 800 },
+                Normalize = route => route.Owner is not ("creative" or "delivery" or "platform" or "director")
+                    ? throw new AgentModelJsonException($"owner \"{route.Owner}\" must be creative, delivery, platform or director")
+                    : string.IsNullOrWhiteSpace(route.Reason) || route.Reason.Length > 1000
+                        ? throw new AgentModelJsonException("reason must be one to 1000 characters")
+                        : route
+            }, token);
+        }
+        catch (AgentModelJsonException error)
+        {
+            throw new InvalidOperationException(
+                $"The Director must identify a bounded accountable owner before delegating work ({error.Problem}).", error);
+        }
     }
 
     private static async Task StopMisroutedBuildTrackingAsync(DecisionRecord decision, GameDirectorOperatingState state,

@@ -1,4 +1,8 @@
-# Video Game Director 0.6.5
+# Video Game Director 0.6.6
+
+Request ownership is read with the SDK's `AgentModelJson`, so an invalid owner or reason is corrected in the same conversation instead of failing the request. A Creative Director that appends the exact reason to an incomplete review (" Reason: ...") is still retried, and the reason is shown in the retry and in the final blocked status.
+
+## Video Game Director 0.6.5
 
 Uses the optional `CSweet.Agent.SDK.VideoGame.Contracts` 1.0.0 NuGet package for the shared video-game contracts instead of compiling its own `extensions/video-game/VideoGameContracts.cs` copy.
 
