@@ -1,4 +1,8 @@
-# Video Game Director 0.6.7
+# Video Game Director 0.6.9
+
+GDD review evaluates substantive coverage across prose, tables, alternative outlines or other readable structures. It uses evidence-backed model judgments rather than heading or length gates, while code binds the decision to the exact authorized revision. Finalization retains the latest blocker; an explicit retry relays retained feedback after a typed generation failure. Uses `CSweet.Agent.SDK.VideoGame.Contracts` 1.1.0 and Creative Director 4.1.4. Publish the contracts package first, then update both agents through published releases and Installed Agents.
+
+## Video Game Director 0.6.7
 
 When Naomi's creative review of the production brief uses up its attempts, Marcus asks the owner how to continue (retry the review, ask Gabriel to revise the brief, or keep it paused) instead of leaving the review blocked.
 

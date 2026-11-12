@@ -34,7 +34,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.6.7";
+    public override string Version => "0.6.9";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -2574,6 +2574,17 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        if (document.DocumentType == CSweet.Agent.SDK.VideoGame.Contracts.GameCreativeDesignProtocolV1.DocumentType &&
+            requiredDocumentType == CSweet.Agent.SDK.VideoGame.Contracts.GameCreativeDesignProtocolV1.DocumentType)
+        {
+            try { return await ReviewGddSemanticallyAsync(revision.Content, state, context, cancellationToken); }
+            catch (Exception error) when (error is AgentModelJsonException or GddReviewUnavailableException)
+            {
+                return new("changes-required", "GDD semantic review could not complete.",
+                    [new("gdd.review.unavailable", "whole-document", "Critical", true, error.Message,
+                        "The Video Game Director must restore semantic review and retry this exact revision.")]);
+            }
+        }
         var deterministicFindings = DeterministicArtifactFindings(revision.Content);
         if (deterministicFindings.Any(x => x.Blocking))
             return new SemanticArtifactReview("changes-required",
