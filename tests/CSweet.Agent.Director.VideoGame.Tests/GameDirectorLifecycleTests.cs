@@ -447,6 +447,8 @@ public sealed class GameDirectorLifecycleTests
     }
 
     [Theory]
+    [InlineData("- **Non-goals:** Mobile, VR, multiplayer, 3D, procedural level generation.\n**Recommended engine/asset strategy:** Phaser (latest major) for 2D web rendering.")]
+    [InlineData("## Non-goals\n### Graphics\n- 3D gameplay\n## Delivery\nA browser game.")]
     [InlineData("Top-down 2D web game. Phaser 3. No 3D or native builds.")]
     [InlineData("2D web game with 3D-like light effects, but without 3D gameplay.")]
     public void NegativeThreeDimensionalLanguageDoesNotSelectBabylon(string pitch)

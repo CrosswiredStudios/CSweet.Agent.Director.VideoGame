@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.7.1";
+    public override string Version => "0.7.2";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -506,6 +506,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 request.Transcript.Last(t => t.Artifact is not null).SpeakerOrganizationUserId != request.Counterpart.OrganizationUserId)
                 return AgentCoordinationTurnResult.Blocked("The feasibility assessment must come from the Technical Director assigned to this project review.");
             var evidence = latestArtifact.Payload.Deserialize<ToolchainFeasibilityEvidenceV1>();
+            if (!request.IsFinalization && evidence is not null && !current.State.ToolchainSelectionDecisionId.HasValue &&
+                evidence.AcceptedVisionDigest == feasibilityVision.Digest && evidence.RecipeKey != DetermineRequiredRecipe(current.State) &&
+                request.Transcript.LastOrDefault(t => t.Artifact?.Type == ToolchainFeasibilityRequestType) is { } earlier &&
+                earlier.SpeakerOrganizationUserId == request.Self.OrganizationUserId && earlier.Artifact!.Key == feasibilityVision.Digest &&
+                earlier.Artifact.Payload.TryGetProperty("requiredRecipeKey", out var asked) && asked.GetString() == evidence.RecipeKey)
+                return await RequestCurrentRecipeReviewAsync(request, current.State, feasibilityVision, context, cancellationToken);
             if (evidence is null ||
                 evidence.Findings is not { Count: > 0 } || evidence.EvidenceResourceIds is not { Count: > 0 } ||
                 evidence.TargetKeys is not { Count: > 0 } || evidence.RecipeKey != DetermineRequiredRecipe(current.State) ||
@@ -2014,6 +2020,26 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             return (state, revision, false);
         }
 
+        // A legacy review may be valid evidence about the wrong recipe. Reopen that
+        // exact collaboration; its negative finding cannot authorize the corrected recipe.
+        var blockerId = state.ToolchainBlockerDecisionId;
+        var priorBlocker = blockerId.HasValue
+            ? (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(blockerId), cancellationToken)).SingleOrDefault()
+            : null;
+        var replaces = SupersededRecipeBlocker(state, priorBlocker, recipe);
+        if (state.ToolchainFeasibilityEvidence is { } previous && previous.RecipeKey != recipe &&
+            previous.AcceptedVisionDigest == acceptedVision.Digest && !state.ToolchainSelectionDecisionId.HasValue &&
+            state.ToolchainFeasibilitySessionId is { } retained)
+        {
+            if (blockerId.HasValue && replaces is null) return (state, revision, false);
+            var session = await context.Platform.Communication.ReadCoordinationAsync(retained, cancellationToken);
+            if (session.Status == "Blocked" && session.WorkContext?.WorkstreamId == workstreamId &&
+                session.WorkContext.TeamId == teamId && session.Target.OrganizationUserId == technicalDirectorId)
+                await context.Platform.Communication.ResumeCoordinationAsync(retained, session.Revision,
+                    $"Review the accepted pitch against {recipe}. The earlier assessment concerned {previous.RecipeKey}.",
+                    $"recipe-review:{retained:N}:{acceptedVision.Digest}:{recipe}", cancellationToken);
+            return (state, revision, false);
+        }
         if (state.ToolchainFeasibilityEvidence is null)
         {
             if (!state.ToolchainFeasibilitySessionId.HasValue)
@@ -2050,7 +2076,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             !string.Equals(feasibility.RecipeKey, recipe, StringComparison.Ordinal) ||
             targets.Except(feasibility.TargetKeys, StringComparer.Ordinal).Any())
         {
-            if (!state.ToolchainBlockerDecisionId.HasValue)
+            if (!blockerId.HasValue || replaces.HasValue)
             {
                 var blocker = await context.Platform.RequestDecisionAsync(new DecisionRequest(
                     workstreamId,
@@ -2066,8 +2092,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     FeasibilitySources(feasibility, acceptedVision, "Submitted"),
                     DateTimeOffset.UtcNow.AddDays(2),
                     "Implementation and build work remain blocked until exact Technical Director feasibility evidence is accepted.",
-                    null,
-                    $"toolchain-infeasible:{workstreamId:N}:{recipe}:{acceptedVision.Digest}"), cancellationToken);
+                    replaces,
+                    $"toolchain-infeasible:{workstreamId:N}:{recipe}:{acceptedVision.Digest}",
+                    JsonSerializer.SerializeToElement(new { recipeKey = recipe })), cancellationToken);
                 var saved = await SaveStateAsync(state with { ToolchainBlockerDecisionId = blocker.Id },
                     revision, reviewId, $"toolchain-feasibility-blocker:{blocker.Id:N}", context, cancellationToken);
                 return (saved.State, saved.Revision, false);
@@ -2077,15 +2104,20 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
 
         if (!state.ToolchainSelectionDecisionId.HasValue)
         {
-            var recommendation = catalog
+            if (priorBlocker is { Status: DecisionStatuses.Decided, SelectedOptionId: "pause" or "change-target" })
+                return (state, revision, false);
+            var providers = catalog
                 .OrderByDescending(x => x.Eligibility.ExpiresAt)
                 .ThenBy(x => x.Definition.ProviderPackageId, StringComparer.Ordinal)
-                .First();
-            var options = catalog.Select(x => new DecisionOption(
+                .ThenBy(x => x.Definition.DefinitionDigest, StringComparer.Ordinal)
+                .DistinctBy(x => x.Eligibility.ProviderInstallationId).ToList();
+            var recommendation = providers[0];
+            var options = providers.Select(x => new DecisionOption(
                 x.Eligibility.ProviderInstallationId.ToString("N"),
                 $"{x.Definition.DisplayName} / {x.Eligibility.EnvironmentProfileKey}",
                 $"Definition `{x.Definition.DefinitionDigest}`; image `{x.Eligibility.EnvironmentImageDigest}`; certified until {x.Eligibility.ExpiresAt:O}."))
                 .ToList();
+            options.Add(new DecisionOption("defer-selection", "Defer selection", "Keep builds on hold without selecting a certified provider."));
             var recommendedOption = recommendation.Eligibility.ProviderInstallationId.ToString("N");
             var decision = await context.Platform.RequestDecisionAsync(new DecisionRequest(
                 workstreamId,
@@ -2097,7 +2129,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 FeasibilitySources(feasibility, acceptedVision, "Accepted"),
                 null,
                 "Build implementation remains blocked until one exact certified definition, provider installation, and runtime image are durably selected.",
-                null,
+                replaces,
                 $"toolchain-selection:{workstreamId:N}:{recipe}:{recommendation.Definition.DefinitionDigest}"), cancellationToken);
             decision = await DecideProductionChoiceAsync(decision, recommendedOption,
                 $"Selected after exact Technical Director feasibility evidence. Recipe `{recipe}`, definition `{recommendation.Definition.DefinitionDigest}`, provider installation `{recommendation.Eligibility.ProviderInstallationId:D}`, environment image `{recommendation.Eligibility.EnvironmentImageDigest}`.",
@@ -2135,6 +2167,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
 
     internal static string DetermineRequiredRecipe(GameDirectorOperatingState state)
     {
+        if (state.ToolchainSelectionDecisionId.HasValue && state.SelectedToolchainRecipeKey is { Length: > 0 } selected)
+            return selected;
         // The manager's explicit engine choice outranks incidental wording in a model-written pitch.
         foreach (var preference in state.ManagerPreferences.EnginePreferences.Reverse())
         {
@@ -2145,7 +2179,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         }
         var text = string.Join(' ', state.ManagerPreferences.PlatformConstraints
             .Concat(state.ManagerPreferences.EnginePreferences)
-            .Append(state.AcceptedVision?.Markdown ?? string.Empty));
+            .Append(InScopeToolchainText(state.AcceptedVision?.Markdown ?? string.Empty)));
         var web = HasAffirmativeMention(text, @"\b(?:web|browser|phaser|babylon(?:\.js)?)\b");
         var threeDimensional = HasAffirmativeMention(text, @"\b(?:3D(?!-like)|three[- ]dimensional|babylon(?:\.js)?)\b");
         if (web)

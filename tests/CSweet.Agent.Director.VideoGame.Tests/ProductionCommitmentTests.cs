@@ -49,6 +49,84 @@ public sealed class ProductionCommitmentTests
         Assert.Equal("Blocked", wrongTeam.Disposition);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BlockedReviewGetsFreshEvidenceForTheCorrectRecipeBeforeReplacingTheDecision(bool feasible)
+    {
+        var agent = new VideoGameDirectorAgent();
+        var victor = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var state = State();
+        var pitch = state.AcceptedVision! with { Markdown = "- **Non-goals:** mobile, 3D\nUse Phaser for 2D web." };
+        var now = DateTimeOffset.UtcNow;
+        const string oldRecipe = "babylon.web-3d.v1", currentRecipe = "phaser.web-2d.v1";
+        var oldEvidence = new CSweet.Agent.SDK.VideoGame.Contracts.ToolchainFeasibilityEvidenceV1(pitch.Digest, oldRecipe,
+            ["web"], false, ["The Babylon scaffold cannot verify the recommended Phaser version."], [pitch.ArtifactId], now);
+        var blocker = new DecisionRecord(Guid.NewGuid(), state.WorkstreamId!.Value, "video-game.toolchain-selection.v1",
+            $"Technical Director feasibility is blocking recipe `{oldRecipe}`: wrong scaffold", "technical-feasibility-blocker",
+            [], "remediate", null, "Pending", null, [new("artifact", pitch.ArtifactId, pitch.ArtifactRevisionId,
+                pitch.ArtifactRevisionHash, "video-game.vision.v1", "Accepted")], null, null, null, 1, now, now);
+        state = state with { AcceptedVision = pitch, ToolchainFeasibilitySessionId = sessionId, ToolchainFeasibilityEvidence = oldEvidence,
+            ToolchainBlockerDecisionId = blocker.Id, SpecialistEmployeeIds = new Dictionary<string,Guid> { ["game-technical-director"] = victor } };
+        Assert.Null(VideoGameDirectorAgent.SupersededRecipeBlocker(state, blocker with { Status = "Decided" }, currentRecipe));
+        Assert.Null(VideoGameDirectorAgent.SupersededRecipeBlocker(state, blocker with { Evidence = [] }, currentRecipe));
+        var runtime = RosterRuntime(state, [Technical(victor)]);
+        var empty = JsonSerializer.SerializeToElement(new {});
+        var definition = new ToolchainAdapterDefinition(Guid.NewGuid(), "node-typescript.v1", 1, "Node", "pkg", "1", "hash",
+            [], empty, empty, [], [], now);
+        var provider = new EligibleToolchainAdapter(definition, new(definition.Id, Guid.NewGuid(), Guid.NewGuid(), "node",
+            "image", now, now.AddDays(1), true));
+        var tech = new AgentCoordinationParticipant(victor, Guid.NewGuid(), "Victor", "Technical Director");
+        var director = new AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Marcus", "Director");
+        var session = JsonSerializer.Deserialize<AgentCoordinationSession>("{}")! with {
+            Id = sessionId, Revision = 4, Status = "Blocked", Target = tech,
+            WorkContext = new(Guid.NewGuid(), blocker.WorkstreamId, state.TeamId, null, null, null, null, sessionId, null, null) };
+        var resumeCount = 0;
+        var decisions = new List<DecisionRequest>();
+        runtime.RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(PlatformCapabilities.ToolchainCatalogRead,
+            (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([provider, provider]));
+        runtime.RegisterCapability<ReadDecisionRequest, IReadOnlyList<DecisionRecord>>(PlatformCapabilities.DecisionRead,
+            (_, _) => Task.FromResult<IReadOnlyList<DecisionRecord>>([blocker]));
+        runtime.RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead,
+            (r, _) => { Assert.Equal(sessionId, r.SessionId); return Task.FromResult(session); });
+        runtime.RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume,
+            (r, _) => { Assert.Equal(session.Revision, r.ExpectedRevision); resumeCount++; session = session with { Status = "Active" }; return Task.FromResult(session); });
+        runtime.RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+            (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(r.StateKey == VideoGameDirectorAgent.ProjectStateKey(state.WorkstreamId, null)
+                ? new(Guid.NewGuid(), r.StateKey, "test", 1, "Active", new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(),
+                    JsonSerializer.SerializeToElement(state), 1, now, now) : null)));
+        runtime.RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
+            (r, _) => Task.FromResult(new AgentOperatingStateResponse(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
+                new Dictionary<string,string>(), [], "test", [], Guid.NewGuid(), r.Payload, 2, now, now)));
+        runtime.RegisterCapability<DecisionRequest, DecisionRecord>(PlatformCapabilities.DecisionRequest,
+            (r, _) => { decisions.Add(r); return Task.FromResult(blocker with { Id = Guid.NewGuid(), AuthorityRuleKey = r.AuthorityRuleKey,
+                Status = feasible ? "Decided" : "Pending", SelectedOptionId = feasible ? r.RecommendedOptionId : null }); });
+        var context = runtime.CreateContext();
+        for (int i = 0; i < 2; i++)
+            Assert.False((await agent.EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), context, default)).Ready);
+        Assert.Equal(1, resumeCount);
+        var turn = new AgentCoordinationTurnRequest(sessionId, 5, 4, "Review", "Assess", [], director, tech, false,
+            [new(Guid.NewGuid(), 0, director.OrganizationUserId, "Continue", "Assess.", now,
+                new(VideoGameDirectorAgent.ToolchainFeasibilityRequestType, "1.0", pitch.Digest, 1, true,
+                    JsonSerializer.SerializeToElement(new { requiredRecipeKey = oldRecipe }), "digest")),
+             new(Guid.NewGuid(), 1, victor, "Blocked", "Wrong engine.", now,
+                new("video-game.toolchain-feasibility.v1", "1.0", pitch.Digest, 1, true, JsonSerializer.SerializeToElement(oldEvidence), "digest"))])
+            { WorkContext = session.WorkContext };
+        var redirect = await agent.HandleCoordinationTurnAsync(turn, context, default);
+        Assert.Equal("Continue", redirect.Disposition);
+        Assert.Equal(currentRecipe, redirect.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Empty(decisions);
+        var corrected = state with { ToolchainFeasibilityEvidence = oldEvidence with { RecipeKey = currentRecipe, Feasible = feasible,
+            Findings = [feasible ? "Phaser is supported" : "Unresolved dependency"] } };
+        var outcome = await agent.EnsureToolchainDecisionAsync(corrected, 1, Guid.NewGuid(), context, default);
+        Assert.Equal(feasible, outcome.Ready);
+        var fresh = Assert.Single(decisions);
+        Assert.Equal(blocker.Id, fresh.SupersedesDecisionId);
+        if (feasible) Assert.Equal([provider.Eligibility.ProviderInstallationId.ToString("N"), "defer-selection"], fresh.Options.Select(x => x.Id).ToArray());
+        else Assert.Contains("Unresolved dependency", fresh.Summary);
+    }
+
     [Fact]
     public async Task ManagerRecordsAnEvidenceRequestWhenAcceptedPlanningEvidenceIsMissing()
     {
