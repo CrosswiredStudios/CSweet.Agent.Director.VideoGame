@@ -67,7 +67,9 @@ public sealed partial class VideoGameDirectorAgent
         if (review.RequiresOwner)
         {
             _ = await context.Platform.RequestDecisionAsync(new DecisionRequest(decision.WorkstreamId,
-                decision.TypeKey, decision.Summary, "material-strategy-change", decision.Options,
+                decision.TypeKey, decision.Summary, "material-strategy-change",
+                decision.TypeData is { } payload && payload.TryGetProperty("kind", out var action) && action.GetString() == "ceo-hold"
+                    ? [.. decision.Options, new("pause-affected-work", "Keep named tickets on hold", "Continue independent work while the named decision remains open.")] : decision.Options,
                 decision.RecommendedOptionId, decision.Evidence, decision.DueAt,
                 "A material change to the accepted project direction requires owner approval.",
                 decision.Id, $"creative-owner-escalation:{decision.Id:N}", decision.TypeData), token);
@@ -118,7 +120,7 @@ public sealed partial class VideoGameDirectorAgent
                 performance from a successful dependency check or silently waive accepted requirements.
                 """),
             new ChatMessage(ChatRole.User, JsonSerializer.Serialize(new {
-                decision.Summary, decision.Options, acceptedVision, acceptedPlan, completedEvidence
+                decision.Summary, decision.Options, decision.TypeData, acceptedVision, acceptedPlan, completedEvidence
             }))
         ], cancellationToken: token);
         return ParsePlanningDirection(response.Text, decision.Options);

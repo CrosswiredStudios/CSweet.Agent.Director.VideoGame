@@ -6,6 +6,49 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class ProductionCommitmentTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Chat_retry_returns_the_legacy_request_and_exact_pitch_to_the_specialist(bool summarizing)
+    {
+        var director = new AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Marcus Vale", "Director");
+        var technical = new AgentCoordinationParticipant(Guid.NewGuid(), Guid.NewGuid(), "Technical Director", "Reviewer");
+        var id = Guid.NewGuid();
+        var hash = new string('b', 64);
+        var state = State();
+        state = state with { AcceptedVision = state.AcceptedVision! with { Digest = hash, ArtifactRevisionHash = hash },
+            ToolchainFeasibilitySessionId = id, SpecialistEmployeeIds = new Dictionary<string, Guid> { ["game-technical-director"] = technical.OrganizationUserId } };
+        var original = new AgentCoordinationArtifact(VideoGameDirectorAgent.ToolchainFeasibilityRequestType,
+            "1.0", hash, 1, true, JsonSerializer.SerializeToElement(new { acceptedVisionDigest = hash, requiredRecipeKey = "phaser.web-2d.v1" }), "digest");
+        var now = DateTimeOffset.UtcNow;
+        var request = new AgentCoordinationTurnRequest(id, 3, 3, "Toolchain feasibility approval", "Assess build setup", [],
+            director, technical, summarizing,
+            [new(Guid.NewGuid(), 0, director.OrganizationUserId, "Continue", "Assess build setup.", now, original),
+             new(Guid.NewGuid(), 1, technical.OrganizationUserId, "Blocked", "A current, typed production planning cycle is required.", now)])
+            { WorkContext = new(Guid.NewGuid(), state.WorkstreamId!.Value, state.TeamId, null, null, null, null, id, null, "video-game-production.v2") };
+        var configuration = JsonSerializer.SerializeToElement(new { });
+        var definition = new ToolchainAdapterDefinition(Guid.NewGuid(), "node-typescript.v1", 1, "Node", "pkg", "1", hash,
+            [], configuration, configuration, [], [], now);
+        var adapter = new EligibleToolchainAdapter(definition, new(definition.Id, Guid.NewGuid(), Guid.NewGuid(), "node-24",
+            "refreshed-image", now, now.AddDays(1), true));
+        var runtime = new AgentTestRuntime().RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
+            PlatformCapabilities.ToolchainCatalogRead, (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([adapter]));
+        var result = await VideoGameDirectorAgent.RouteFeasibilityReviewAsync(request, state, original, runtime.CreateContext(), default);
+        if (summarizing)
+        {
+            Assert.Equal("Blocked", result.Disposition);
+            Assert.Contains("A current, typed production planning cycle is required.", result.Content);
+            return;
+        }
+        Assert.Equal("Continue", result.Disposition);
+        Assert.Equal("phaser.web-2d.v1", result.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Equal("refreshed-image", result.Artifact.Payload.GetProperty("eligibleDefinitions")[0].GetProperty("EnvironmentImageDigest").GetString());
+        var attachment = Assert.Single(result.Artifact.Payload.GetProperty("documentReferences").EnumerateArray());
+        Assert.Equal(state.AcceptedVision!.ArtifactRevisionId, attachment.GetProperty("revisionId").GetGuid());
+        var wrongTeam = await VideoGameDirectorAgent.RouteFeasibilityReviewAsync(request, state with { TeamId = Guid.NewGuid() }, original, runtime.CreateContext(), default);
+        Assert.Equal("Blocked", wrongTeam.Disposition);
+    }
+
     [Fact]
     public async Task ManagerRecordsAnEvidenceRequestWhenAcceptedPlanningEvidenceIsMissing()
     {

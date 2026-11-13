@@ -174,9 +174,14 @@ public sealed partial class VideoGameDirectorAgent
                     text.AppendLine($"Project: {project.Name}. Status: {project.Status}.");
                 }
                 text.AppendLine(state.AcceptedVision is null ? "Pitch approval: pending." : "Pitch: approved exact revision retained.");
-                var reports = state.SubordinateReports.GroupBy(x => x.ReporterOrganizationUserId)
+                var sprintReviews = state.SubordinateReports.Where(r => r.WorkstreamId == state.WorkstreamId &&
+                    r.ReporterRole == "game-producer" && r.ConversationTopics.Contains("game-sprint-review"))
+                    .DistinctBy(r => r.CycleId).OrderBy(r => r.ReportedAt).ToArray();
+                foreach (var review in sprintReviews)
+                    text.AppendLine($"\n{review.Summary} Next goal: {string.Join(" ", review.InProgress)}. Evidence: {review.Markdown}");
+                var reports = state.SubordinateReports.Except(sprintReviews).GroupBy(x => x.ReporterOrganizationUserId)
                     .Select(group => group.MaxBy(x => x.ReportedAt)!).OrderByDescending(x => x.ReportedAt).Take(20).ToArray();
-                if (reports.Length == 0) text.AppendLine("Delivery and creative evidence: no subordinate report received yet.");
+                if (reports.Length == 0 && sprintReviews.Length == 0) text.AppendLine("Delivery and creative evidence: no subordinate report received yet.");
                 foreach (var report in reports)
                 {
                     if (DateTimeOffset.UtcNow - report.ReportedAt > TimeSpan.FromDays(1)) text.AppendLine("Evidence freshness: this report is over 24 hours old; current delivery health is unconfirmed.");
@@ -218,6 +223,8 @@ public sealed partial class VideoGameDirectorAgent
             var status = current.WorkstreamId is { } id
                 ? (await context.Platform.ReadWorkstreamAsync(new ReadWorkstreamRequest(id), token)).Status : "Concept";
             facts.Add($"{entry.StateKey}:{current.Phase}:{status}:{current.AcceptedVision?.ArtifactRevisionId}");
+            facts.AddRange(current.SubordinateReports.Where(r => r.ConversationTopics.Contains("game-sprint-review"))
+                .Select(r => r.CycleId.ToString("N")).Distinct().Order());
         }
         var digest = Digest(string.Join("\n", facts));
         if (digest == preferences.LastMilestoneDigest || facts.Count == 0) return;

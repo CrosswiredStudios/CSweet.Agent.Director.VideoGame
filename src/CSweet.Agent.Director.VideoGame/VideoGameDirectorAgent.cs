@@ -21,6 +21,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     public const string VisionBriefArtifactType = "creative-direction.game-vision-brief.v1";
     public const string VisionAcknowledgementArtifactType = "video-game.production.game-vision-acknowledgement.v1";
     public const string ToolchainFeasibilityArtifactType = "video-game.toolchain-feasibility.v1";
+    internal const string ToolchainFeasibilityRequestType = "video-game.toolchain-feasibility-request.v1";
     private const string StateSchema = "com.csweet.video-game-director.operating-state.v1";
     internal const int DefaultPitchContextWindowTokens = 256_000;
     internal const int DefaultPitchOutputTokens = 128_000;
@@ -34,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.6.9";
+    public override string Version => "0.7.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -460,6 +461,22 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         if (request.Transcript.Any(x => x.Artifact?.Type == "video-game.project-foundation.request.v1"))
             return await ReviewProjectFoundationAsync(request, context, cancellationToken);
         var current = await ReadStateForCoordinationAsync(request, context, cancellationToken);
+        if (request.Transcript.LastOrDefault(t => t.Artifact != null) is { Artifact.Type: "video-game.sprint.review.v1" } summary)
+        {
+            var report = summary.Artifact.Payload.Deserialize<ManagementStatusReport>();
+            if (report?.WorkstreamId is not Guid project || request.WorkContext?.WorkstreamId != project ||
+                current.State.WorkstreamId != project || request.Counterpart.OrganizationUserId != current.State.ProducerEmployeeId ||
+                summary.SpeakerOrganizationUserId != current.State.ProducerEmployeeId || request.BoardSource?.BoardId is not Guid board ||
+                !(await context.Platform.Work.ListSprintsAsync(board, cancellationToken)).Any(s => s.Id == report.CycleId && s.Status == "Completed"))
+                return AgentCoordinationTurnResult.Blocked("Sprint reporting requires the project's Producer and an actual completed sprint.");
+            report = report with { ReporterOrganizationUserId = summary.SpeakerOrganizationUserId, ReporterRole = "game-producer",
+                ConversationTopics = ["game-sprint-review"] };
+            if (!current.State.SubordinateReports.Any(r => r.CycleId == report.CycleId && r.ReporterOrganizationUserId == summary.SpeakerOrganizationUserId))
+                await SaveStateAsync(current.State with { SubordinateReports = [.. current.State.SubordinateReports, report] }, current.Revision,
+                    request.SessionId, "sprint-report:" + report.CycleId.ToString("N"), context, cancellationToken);
+            return AgentCoordinationTurnResult.Completed("Sprint assessment retained for CEO reporting.",
+                new("video-game.sprint.review-received.v1", "1.0", summary.Artifact.Key, 1, true, JsonSerializer.SerializeToElement(new { report.CycleId })));
+        }
         if (request.Counterpart.OrganizationUserId == current.State.ProducerEmployeeId &&
             request.WorkContext?.WorkstreamId == current.State.WorkstreamId && request.WorkContext?.TeamId == current.State.TeamId &&
             request.Transcript.Any(x => x.Artifact?.Type == CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.ReviewType) &&
@@ -471,6 +488,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 " The exact draft and review findings are retained for project-scoped manager recovery.");
         }
         var latestArtifact = request.Transcript.LastOrDefault(x => x.Artifact is not null)?.Artifact;
+        if (latestArtifact?.Type == ToolchainFeasibilityRequestType)
+            return await RouteFeasibilityReviewAsync(request, current.State, latestArtifact, context, cancellationToken);
         if (latestArtifact?.Type == CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.ReviewType)
         {
             var review = latestArtifact.Payload.Deserialize<CrosswiredStudios.VideoGame.PitchCollaboration.PitchReview>(
@@ -483,8 +502,13 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             string.Equals(latestArtifact.Type, ToolchainFeasibilityArtifactType, StringComparison.Ordinal) &&
             current.State.AcceptedVision is { } feasibilityVision)
         {
+            if (!IsAssignedFeasibilityReview(request, current.State) ||
+                request.Transcript.Last(t => t.Artifact is not null).SpeakerOrganizationUserId != request.Counterpart.OrganizationUserId)
+                return AgentCoordinationTurnResult.Blocked("The feasibility assessment must come from the Technical Director assigned to this project review.");
             var evidence = latestArtifact.Payload.Deserialize<ToolchainFeasibilityEvidenceV1>();
             if (evidence is null ||
+                evidence.Findings is not { Count: > 0 } || evidence.EvidenceResourceIds is not { Count: > 0 } ||
+                evidence.TargetKeys is not { Count: > 0 } || evidence.RecipeKey != DetermineRequiredRecipe(current.State) ||
                 !string.Equals(evidence.AcceptedVisionDigest, feasibilityVision.Digest, StringComparison.OrdinalIgnoreCase))
                 return AgentCoordinationTurnResult.Blocked(
                     "The Technical Director evidence does not bind to the exact accepted vision digest. Reassess the assigned recipe against the exact project evidence.");
@@ -1895,9 +1919,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var workstreamId = state.WorkstreamId.Value;
         var acceptedVision = state.AcceptedVision;
         var recipe = DetermineRequiredRecipe(state);
-        var targets = recipe.StartsWith("godot.", StringComparison.Ordinal)
-            ? new[] { "windows-x64", "linux-x64" }
-            : ["web"];
+        var targets = ToolchainTargets(recipe);
         // Staffing and brief refinement continue before the Technical Director can assess
         // build requirements. Do not escalate runner capacity to the manager prematurely.
         if (state.TeamId is not { } teamId) return (state, revision, false);
@@ -1915,9 +1937,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             .Where(x => x.Key != VideoGameRoleKeys.TechnicalDirector)
             .Append(new KeyValuePair<string, Guid>(VideoGameRoleKeys.TechnicalDirector, technicalDirectorId))
             .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal) };
-        var catalog = await context.Platform.ReadEligibleToolchainsAsync(new ReadToolchainCatalogV2Request(
-            VideoGameProfileKeys.ProductionV2, recipe, targets,
-            ["scaffold", "import", "build", "test", "run", "capture", "package"]), cancellationToken);
+        var catalog = await context.Platform.ReadEligibleToolchainsAsync(FeasibilityCatalogRequest(recipe, targets), cancellationToken);
         if (catalog.Count == 0 && recipe is "phaser.web-2d.v1" or "babylon.web-3d.v1")
         {
             var resources = await context.Platform.Resources.ReadAsync(new(WorkstreamId: workstreamId), cancellationToken);
@@ -1998,23 +2018,6 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         {
             if (!state.ToolchainFeasibilitySessionId.HasValue)
             {
-                var requestPayload = JsonSerializer.SerializeToElement(new
-                {
-                    acceptedVisionDigest = acceptedVision.Digest,
-                    requiredRecipeKey = recipe,
-                    targetKeys = targets,
-                    eligibleDefinitions = catalog.Select(x => new
-                    {
-                        x.Definition.Id,
-                        x.Definition.Key,
-                        x.Definition.Version,
-                        x.Definition.DefinitionDigest,
-                        x.Eligibility.ProviderInstallationId,
-                        x.Eligibility.EnvironmentProfileKey,
-                        x.Eligibility.EnvironmentImageDigest,
-                        x.Eligibility.ExpiresAt
-                    })
-                });
                 var session = await context.Platform.Communication.StartCoordinationAsync(
                     new StartAgentCoordinationRequest(
                         technicalDirectorId,
@@ -2026,9 +2029,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                         acceptedVision.ChatTurnId,
                         acceptedVision.MessageId,
                         $"toolchain-feasibility:{workstreamId:N}:{recipe}:{acceptedVision.Digest}",
-                        new AgentCoordinationArtifactSubmission(
-                            "video-game.toolchain-feasibility-request.v1", "1.0",
-                            acceptedVision.Digest, 1, true, requestPayload))
+                        FeasibilityRequestWithPitch(acceptedVision, recipe, targets, catalog))
                     {
                         WorkContext = ProjectWorkContext(state, context, workstreamId)
                     }, cancellationToken);
@@ -2062,8 +2063,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                         new DecisionOption("pause", "Pause project", "Keep implementation blocked while preserving the accepted vision.")
                     ],
                     "remediate",
-                    feasibility.EvidenceResourceIds.Select(id => new EvidenceReference(
-                        "artifact", id, null, null, VideoGameArtifactTypeKeys.TechnicalDesign, "Submitted")).ToList(),
+                    FeasibilitySources(feasibility, acceptedVision, "Submitted"),
                     DateTimeOffset.UtcNow.AddDays(2),
                     "Implementation and build work remain blocked until exact Technical Director feasibility evidence is accepted.",
                     null,
@@ -2094,8 +2094,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 CertifiedToolchainAuthority,
                 options,
                 recommendedOption,
-                feasibility.EvidenceResourceIds.Select(id => new EvidenceReference(
-                    "artifact", id, null, null, VideoGameArtifactTypeKeys.TechnicalDesign, "Accepted")).ToList(),
+                FeasibilitySources(feasibility, acceptedVision, "Accepted"),
                 null,
                 "Build implementation remains blocked until one exact certified definition, provider installation, and runtime image are durably selected.",
                 null,
