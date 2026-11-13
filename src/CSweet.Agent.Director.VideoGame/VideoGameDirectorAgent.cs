@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.7.0";
+    public override string Version => "0.7.1";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -3438,12 +3438,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         await stream.FlushAsync(cancellationToken);
     }
 
-    internal static async Task ReviewPendingStaffingAsync(AgentRuntimeContext context, CancellationToken token)
+    internal async Task ReviewPendingStaffingAsync(AgentRuntimeContext context, CancellationToken token)
     {
         if (!Guid.TryParse(context.Identity?.EmployeeId, out var director)) return;
-        var pending = await context.Platform.ReadResourceChangesAsync(new ResourceChangeReadRequest(), token);
+        var pending = await context.Platform.ReadResourceChangesAsync(new ResourceChangeReadRequest(Statuses: ["Pending"]), token);
         foreach (var request in pending.Requests.Where(x => x.Status == "Pending" &&
-                     x.ManagerOrganizationUserId == director && x.TeamId.HasValue && x.WorkstreamId.HasValue).Take(5))
+                     x.ManagerOrganizationUserId == director && x.WorkstreamId.HasValue).OrderByDescending(x => x.TeamId.HasValue).Take(5))
         {
             var payload = JsonSerializer.SerializeToElement(new { requestId = request.Id,
                 managerOrganizationUserId = director, teamId = request.TeamId, workstreamId = request.WorkstreamId });
@@ -3457,24 +3457,35 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         (leadId == requesterId || (leadId == directorId && managerId == directorId &&
             roster.Members.Any(x => Guid.TryParse(x.EmployeeId, out var memberId) && memberId == requesterId &&
                 x.AgentInstallationId == installationId && x.DeclaredRoleKeys.Contains(VideoGameRoleKeys.Producer))));
-    private static async Task DecideProducerCapacityRequestAsync(
+    private async Task DecideProducerCapacityRequestAsync(
         AgentEventEnvelope message,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
         var requested = message.Data.Deserialize<ResourceChangeDecisionEvent>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
         if (requested is null || !Guid.TryParse(context.Identity?.EmployeeId, out var creativeDirectorId) ||
-            requested.ManagerOrganizationUserId != creativeDirectorId || requested.TeamId is not { } teamId ||
-            requested.WorkstreamId is not { } workstreamId)
+            requested.ManagerOrganizationUserId != creativeDirectorId || requested.WorkstreamId is null)
             return;
         var resource = (await context.Platform.ReadResourceChangesAsync(
             new ResourceChangeReadRequest(requested.RequestId), cancellationToken)).Requests.SingleOrDefault();
-        if (resource is null || resource.Status != "Pending") return;
+        if (resource is null || resource.Status != "Pending" || resource.ManagerOrganizationUserId != creativeDirectorId ||
+            resource.WorkstreamId is not { } workstreamId || workstreamId != requested.WorkstreamId) return;
+        if (resource.TeamId is not { } teamId)
+        {
+            var current = await ReadStateByKeyAsync(ProjectStateKey(workstreamId, null), context, cancellationToken);
+            if (current.State.WorkstreamId == workstreamId && current.State.TeamId.HasValue &&
+                current.State.ProducerEmployeeId == resource.RequesterOrganizationUserId && current.State.HandoffSessionId.HasValue)
+                await context.Platform.DecideResourceChangeAsync(new(resource.Id, ResourceChangeDecisionKinds.RequestRevision,
+                    "This project already has an assigned team. Use its accepted production handoff to assess staffing; this chat request has no team scope.",
+                    $"director-unscoped-staffing:{resource.Id:N}"), cancellationToken);
+            return;
+        }
 
         var roster = (await context.Platform.ReadTeamRosterAsync(
             new TeamRosterV2Request(teamId, workstreamId, 1, 100), cancellationToken)).Team;
         var workstream = await context.Platform.ReadWorkstreamAsync(new ReadWorkstreamRequest(workstreamId), cancellationToken);
         string? revisionReason = null;
+        string? approvalReason = null;
         if (!CanReviewProducerCapacity(roster, creativeDirectorId, resource.RequesterOrganizationUserId,
                 resource.RequesterInstallationId, resource.ManagerOrganizationUserId))
             revisionReason = "The requester must be the team lead or the assigned Producer submitting to the Video Game Director who leads this team.";
@@ -3513,7 +3524,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     .Deserialize<CrosswiredStudios.VideoGame.PitchCollaboration.PitchReview>(CrosswiredStudios.VideoGame.PitchCollaboration.PitchProtocol.Json);
                 revisionReason = producerReview?.PitchDigest != projectState.State.AcceptedVision?.Digest
                     ? "The staffing brief must match this project's accepted pitch."
-                    : ValidateInitialTechnicalLeadership(resource, roster!, producerReview, approvedBrief);
+                    : ValidateKickoffEvidence(resource, producerReview, approvedBrief);
                 if (revisionReason is null)
                 {
                     var briefDocument = await context.Platform.Artifacts.GetAsync(approvedBrief!.DocumentId, cancellationToken);
@@ -3521,47 +3532,34 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                         !briefDocument.Revisions.Any(x => x.Id == approvedBrief.RevisionId &&
                             x.ContentSha256 == approvedBrief.RevisionSha256 && x.Status == "Accepted"))
                         revisionReason = "The staffing evidence must identify the exact accepted project production brief.";
+                    else
+                    {
+                        var content = briefDocument.Revisions.Single(x => x.Id == approvedBrief.RevisionId).Content;
+                        var judgment = await ReviewStaffingCapacityAsync(content, resource, roster!, context, cancellationToken);
+                        if (judgment.Justified == true) approvalReason = judgment.Reason;
+                        else revisionReason = judgment.Reason;
+                    }
                 }
             }
         }
 
         if (revisionReason is null && metrics is not null)
         {
-            var activeProfileRoles = (workstream.StaffingRequirements ?? [])
-                .Where(x => x.IsActive).Select(x => x.RoleKey).ToHashSet(StringComparer.Ordinal);
             var backlog = await context.Platform.Work.ReadBoardAsync(board!.Id, cancellationToken);
-            var scopedRoles = backlog.Items.Where(x => x.ProposalProvenance is not null && x.ExecutionMode == WorkItemExecutionModes.Executable)
-                .SelectMany(x => x.Planning?.DelegationRecommendations ?? []).Select(x => x.RequiredRoleKey).ToHashSet(StringComparer.Ordinal);
-            scopedRoles.Add(VideoGameRoleKeys.TechnicalDirector); // Initial feasibility/decomposition capability.
-            foreach (var delta in resource.Deltas.Where(x => x.ChangeKind is "Add" or "Increase"))
-            {
-                if (!activeProfileRoles.Contains(delta.Role.RoleKey) && !scopedRoles.Contains(delta.Role.RoleKey))
-                {
-                    revisionReason = $"Role '{delta.Role.RoleKey}' has no active profile or scoped backlog requirement.";
-                    break;
-                }
-                var vacant = !roster!.Members.Any(x => x.IsAvailable &&
-                    x.DeclaredRoleKeys.Contains(delta.Role.RoleKey, StringComparer.Ordinal));
-                var role = metrics.Principals.Where(x => x.RoleKey == delta.Role.RoleKey)
-                    .OrderByDescending(x => x.CompletedStageCount).FirstOrDefault();
-                if (!vacant && (metrics.Team.CompletedSprintCount < 2 || role is null || role.CompletedStageCount < 10 ||
-                    resource.Evidence.Count(x => x.Kind == "sprint-review-pressure") < 2))
-                {
-                    revisionReason = $"Role '{delta.Role.RoleKey}' lacks two pressure reviews and the minimum trusted sample.";
-                    break;
-                }
-                if (!vacant && role!.ReworkRatePercent >= 20m)
-                {
-                    revisionReason = $"Role '{delta.Role.RoleKey}' shows rework pressure; submit an improvement commitment before capacity growth.";
-                    break;
-                }
-            }
+            var workEvidence = new { project = workstream.Name, workstream.Outcome, metrics.SourceRevision,
+                metrics.Team, metrics.Principals, profile = workstream.StaffingRequirements?.Where(x => x.IsActive),
+                upcomingWork = backlog.Items.Where(x => x.ProposalProvenance is not null &&
+                    x.Status is not ("Done" or "Completed" or "Cancelled"))
+                    .Select(x => new { x.Title, x.Status, x.ExecutionMode, delegations = x.Planning?.DelegationRecommendations }) };
+            var judgment = await ReviewStaffingCapacityAsync(workEvidence, resource, roster!, context, cancellationToken);
+            if (judgment.Justified == true) approvalReason = judgment.Reason;
+            else revisionReason = judgment.Reason;
         }
 
         _ = await context.Platform.DecideResourceChangeAsync(new ResourceChangeDecisionRequest(
             resource.Id,
             revisionReason is null ? ResourceChangeDecisionKinds.Approve : ResourceChangeDecisionKinds.RequestRevision,
-            revisionReason ?? "Approved as an evidence-backed team-capacity change; this does not authorize hiring or spending.",
+            revisionReason ?? approvalReason ?? "Approved as an evidence-backed team-capacity change; this does not authorize hiring or spending.",
             $"creative-director-capacity-decision:{resource.Id:N}:{resource.ContextRevision}"), cancellationToken);
     }
 

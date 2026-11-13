@@ -1,4 +1,4 @@
-# Video Game Director 0.7.0
+# Video Game Director 0.7.1
 
 GDD review evaluates substantive coverage across prose, tables, alternative outlines or other readable structures. It uses evidence-backed model judgments rather than heading or length gates, while code binds the decision to the exact authorized revision. Finalization retains the latest blocker; an explicit retry relays retained feedback after a typed generation failure. Uses `CSweet.Agent.SDK.VideoGame.Contracts` 1.1.0 and Creative Director 4.1.4. Publish the contracts package first, then update both agents through published releases and Installed Agents.
 

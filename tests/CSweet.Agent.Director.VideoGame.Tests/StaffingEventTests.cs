@@ -71,7 +71,7 @@ public sealed class StaffingEventTests
             });
         var context = runtime.CreateContext(Guid.NewGuid().ToString("D"), Guid.NewGuid().ToString("D"),
             new AgentIdentity(director.ToString("D"), "Director", null, null, null, [], null, null, null));
-        await VideoGameDirectorAgent.ReviewPendingStaffingAsync(context, default);
+        await new VideoGameDirectorAgent().ReviewPendingStaffingAsync(context, default);
         Assert.Equal(addressedToDirector ? request : (Guid?)null, readId);
     }
     [Fact]
