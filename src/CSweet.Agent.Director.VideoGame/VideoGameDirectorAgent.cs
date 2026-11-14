@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.7.2";
+    public override string Version => "0.8.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
