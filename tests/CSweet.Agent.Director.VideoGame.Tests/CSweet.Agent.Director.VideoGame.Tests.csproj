@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <None Update="Fixtures/qfn-conditional-staffing-approval.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

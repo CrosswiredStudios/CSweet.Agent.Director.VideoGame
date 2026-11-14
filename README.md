@@ -1,4 +1,8 @@
-# Video Game Director 0.8.2
+# Video Game Director 0.8.3
+
+Staffing review decides whether the exact submitted package can proceed. A justified capacity gap
+does not approve a different role or a package that still needs corrections. Required changes return
+to the Producer, while hiring and spending retain their separate authorization.
 
 GDD review evaluates substantive coverage across prose, tables, alternative outlines or other readable structures. It uses evidence-backed model judgments rather than heading or length gates, while code binds the decision to the exact authorized revision. Finalization retains the latest blocker; an explicit retry relays retained feedback after a typed generation failure. Uses `CSweet.Agent.SDK.VideoGame.Contracts` 1.1.0 and Creative Director 4.1.4. Publish the contracts package first, then update both agents through published releases and Installed Agents.
 

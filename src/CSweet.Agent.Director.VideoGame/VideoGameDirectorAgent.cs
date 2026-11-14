@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.8.2";
+    public override string Version => "0.8.3";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -3570,8 +3570,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     {
                         var content = briefDocument.Revisions.Single(x => x.Id == approvedBrief.RevisionId).Content;
                         var judgment = await ReviewStaffingCapacityAsync(content, resource, roster!, context, cancellationToken);
-                        if (judgment.Justified == true) approvalReason = judgment.Reason;
-                        else revisionReason = judgment.Reason;
+                        if (judgment.ApproveAsSubmitted == true) approvalReason = judgment.Reason;
+                        else revisionReason = DescribeStaffingRevision(judgment);
                     }
                 }
             }
@@ -3586,8 +3586,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     x.Status is not ("Done" or "Completed" or "Cancelled"))
                     .Select(x => new { x.Title, x.Status, x.ExecutionMode, delegations = x.Planning?.DelegationRecommendations }) };
             var judgment = await ReviewStaffingCapacityAsync(workEvidence, resource, roster!, context, cancellationToken);
-            if (judgment.Justified == true) approvalReason = judgment.Reason;
-            else revisionReason = judgment.Reason;
+            if (judgment.ApproveAsSubmitted == true) approvalReason = judgment.Reason;
+            else revisionReason = DescribeStaffingRevision(judgment);
         }
 
         _ = await context.Platform.DecideResourceChangeAsync(new ResourceChangeDecisionRequest(

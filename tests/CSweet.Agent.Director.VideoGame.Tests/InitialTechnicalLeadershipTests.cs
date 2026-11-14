@@ -62,7 +62,7 @@ public sealed class InitialTechnicalLeadershipTests
                 Assert.Contains("Test high-speed rebounds",input);
                 Assert.Contains("Resolve collision feasibility",input);
                 return Task.FromResult(JsonSerializer.SerializeToElement(new { role="assistant",text=JsonSerializer.Serialize(new {
-                    justified=supported,reason="Review the high-speed collision workload." }) }));
+                    approveAsSubmitted=supported,reason="Review the high-speed collision workload.",requiredChanges=Array.Empty<string>() }) }));
             })
             .RegisterCapability<ResourceChangeDecisionRequest,ResourceChangeRequestResponse>(PlatformCapabilities.ResourceChangeDecide,(r,_)=>{
                 decision=r; return Task.FromResult(request);
@@ -105,7 +105,7 @@ public sealed class InitialTechnicalLeadershipTests
     [InlineData(false, "The current team can resolve the single tuning question.", true)]
     public void A_manager_decision_requires_an_explicit_judgment_and_reason(bool? justified, string reason, bool valid)
     {
-        var judgment = new VideoGameDirectorAgent.StaffingJudgment(justified, reason);
+        var judgment = new VideoGameDirectorAgent.StaffingJudgment(justified, reason, []);
         if (valid) Assert.Equal(judgment, VideoGameDirectorAgent.ValidateStaffingJudgment(judgment));
         else Assert.Throws<AgentModelJsonException>(() => VideoGameDirectorAgent.ValidateStaffingJudgment(judgment));
     }
