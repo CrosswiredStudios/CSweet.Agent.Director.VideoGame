@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
     paths:
+      - .gitattributes
+      - extensions/video-game/**
+      - scripts/verify-bundled-extension.py
       - .github/workflows/agent-release.yml
       - scripts/prepare-ci-dependencies.py
       - scripts/test-ci-dependencies.py
@@ -41,6 +44,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Verify exact bundled extension bytes
+        run: python3 scripts/verify-bundled-extension.py --self-test
       - name: Verify CI dependency fallback
         env:
           CSWEET_RUN_DEPENDENCY_INTEGRATION: '1'

@@ -1,4 +1,4 @@
-# Video Game Director 0.8.1
+# Video Game Director 0.8.2
 
 GDD review evaluates substantive coverage across prose, tables, alternative outlines or other readable structures. It uses evidence-backed model judgments rather than heading or length gates, while code binds the decision to the exact authorized revision. Finalization retains the latest blocker; an explicit retry relays retained feedback after a typed generation failure. Uses `CSweet.Agent.SDK.VideoGame.Contracts` 1.1.0 and Creative Director 4.1.4. Publish the contracts package first, then update both agents through published releases and Installed Agents.
 
@@ -138,3 +138,8 @@ Packages stay local to the job and are never pushed to NuGet. The job summary an
 artifact record origins, source commits and SHA-256 hashes. Private source repositories require the optional
 `CSWEET_DEPENDENCY_READ_TOKEN` Actions secret with read access to the dependency repositories.
 Run `python3 scripts/test-ci-dependencies.py` for the offline resolver regression tests.
+
+Bundled extension text uses LF checkout bytes pinned in `.gitattributes`. After an intentional
+extension edit, refresh the matching SHA-256 in `extensions/video-game/extension.json` and run
+`python3 scripts/verify-bundled-extension.py --self-test`. CI and release jobs verify exact bytes;
+line endings and unexpected source edits cannot bypass provenance checks.
