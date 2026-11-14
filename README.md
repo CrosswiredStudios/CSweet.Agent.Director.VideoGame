@@ -1,4 +1,4 @@
-# Video Game Director 0.8.0
+# Video Game Director 0.8.1
 
 GDD review evaluates substantive coverage across prose, tables, alternative outlines or other readable structures. It uses evidence-backed model judgments rather than heading or length gates, while code binds the decision to the exact authorized revision. Finalization retains the latest blocker; an explicit retry relays retained feedback after a typed generation failure. Uses `CSweet.Agent.SDK.VideoGame.Contracts` 1.1.0 and Creative Director 4.1.4. Publish the contracts package first, then update both agents through published releases and Installed Agents.
 
@@ -128,3 +128,13 @@ to technical leadership; the Technical Director requests a project-scoped exact 
 reviews it within current authority. Published provider installation and real certification run
 as host-owned work. Resource-change events wake continuation; attention reads recover missed wakes.
 An approval is not a completed installation or a passing build.
+
+## CI dependency fallback
+
+GitHub Actions uses the pinned SDK and WorkManagement.Contracts versions from NuGet when available.
+An unpublished version is packed from its reviewed full commit in `build/ci-dependencies.json`.
+Update that commit pin together with any SDK or contracts dependency bump; CI rejects mismatched versions.
+Packages stay local to the job and are never pushed to NuGet. The job summary and dependency-provenance
+artifact record origins, source commits and SHA-256 hashes. Private source repositories require the optional
+`CSWEET_DEPENDENCY_READ_TOKEN` Actions secret with read access to the dependency repositories.
+Run `python3 scripts/test-ci-dependencies.py` for the offline resolver regression tests.
