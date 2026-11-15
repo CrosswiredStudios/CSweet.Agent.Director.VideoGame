@@ -17,7 +17,7 @@
   },
   "id": "com.csweet.video-game-director",
   "name": "Marcus Vale",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -653,6 +653,21 @@
       "modelVisible": false
     },
     {
+      "name": "work.recovery.read.v1",
+      "scope": "organization",
+      "purpose": "Current-state recovery and source-bound owner contributions"
+    },
+    {
+      "name": "work.issues.propose.v1",
+      "scope": "organization",
+      "purpose": "Current-state recovery and source-bound owner contributions"
+    },
+    {
+      "name": "work.issues.proposal.decide.v1",
+      "scope": "organization",
+      "purpose": "Current-state recovery and source-bound owner contributions"
+    },
+    {
       "name": "work.issues.read.v1",
       "scope": "organization",
       "purpose": "Coordinate source-bound issues and scoped advice within current board grants; no execution or acceptance authority."
@@ -672,6 +687,7 @@
     "subscribes": [
       "com.csweet.communication.message.mentioned.v1",
       "work.issues.changed.v1",
+      "work.recovery.changed.v1",
       "com.csweet.calendar.reminder-due.v1",
       "com.csweet.user.message.received.v1",
       "com.csweet.agent.onboarded.v1",

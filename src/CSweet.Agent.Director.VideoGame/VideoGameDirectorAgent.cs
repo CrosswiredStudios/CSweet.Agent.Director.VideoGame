@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.11.0";
+    public override string Version => "0.12.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -303,8 +303,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         await ReviewPendingStaffingAsync(context, cancellationToken);
         await ReconcilePortfolioAsync(review.ReviewId, context, cancellationToken);
         await EnsurePortfolioAgendaAsync(context, cancellationToken);
-        await ReconcileProductionIssuesAsync(context, cancellationToken);
-        await ReconcilePlanningContextsAsync(context, cancellationToken);
+        await IndependentWork.RunAsync([
+            ct => ReconcileProductionIssuesAsync(context, ct),
+            ct => ReconcilePlanningContextsAsync(context, ct)
+        ], cancellationToken);
     }
 
     public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(
