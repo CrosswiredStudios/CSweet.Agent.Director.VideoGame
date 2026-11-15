@@ -89,7 +89,10 @@ public sealed partial class VideoGameDirectorAgent
             ? key.GetString() : prior.Summary.StartsWith(prefix, StringComparison.Ordinal) &&
                 prior.Summary.IndexOf("`:", prefix.Length, StringComparison.Ordinal) is var end && end > prefix.Length
                 ? prior.Summary[prefix.Length..end] : null;
-        return !string.IsNullOrWhiteSpace(old) && old != recipe ? prior.Id : null;
+        var verified = state.ToolchainFeasibilityEvidence is { Feasible: true } evidence &&
+            evidence.AcceptedVisionDigest == pitch.Digest && evidence.RecipeKey == recipe &&
+            !ToolchainTargets(recipe).Except(evidence.TargetKeys, StringComparer.Ordinal).Any();
+        return !string.IsNullOrWhiteSpace(old) && (old != recipe || verified) ? prior.Id : null;
     }
 
     private static IReadOnlyList<EvidenceReference> FeasibilitySources(ToolchainFeasibilityEvidenceV1 assessment,

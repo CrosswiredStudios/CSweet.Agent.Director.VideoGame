@@ -1,3 +1,7 @@
+﻿# Director 0.9.0
+
+Durable issues, scoped reconciliation and concise current-state attention. See [release notes](releases/0.9.0.md).
+
 # Video Game Director 0.8.3
 
 Staffing review decides whether the exact submitted package can proceed. A justified capacity gap

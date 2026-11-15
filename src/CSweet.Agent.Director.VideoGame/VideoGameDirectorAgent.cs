@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.8.3";
+    public override string Version => "0.9.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -302,6 +302,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         await ReviewPendingStaffingAsync(context, cancellationToken);
         await ReconcilePortfolioAsync(review.ReviewId, context, cancellationToken);
         await EnsurePortfolioAgendaAsync(context, cancellationToken);
+        await ReconcileProductionIssuesAsync(context, cancellationToken);
     }
 
     public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(
@@ -2081,7 +2082,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 var blocker = await context.Platform.RequestDecisionAsync(new DecisionRequest(
                     workstreamId,
                     VideoGameDecisionTypeKeys.ToolchainSelection,
-                    $"Technical Director feasibility is blocking recipe `{recipe}`: {string.Join("; ", feasibility.Findings)}",
+                    $"The technical review found unresolved feasibility requirements for `{recipe}`. Choose remediation, a target change, or a pause. Full findings are retained with the review.",
                     "technical-feasibility-blocker",
                     [
                         new DecisionOption("remediate", "Remediate findings", "Create and complete exact board work for every blocking technical finding."),
@@ -2094,7 +2095,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     "Implementation and build work remain blocked until exact Technical Director feasibility evidence is accepted.",
                     replaces,
                     $"toolchain-infeasible:{workstreamId:N}:{recipe}:{acceptedVision.Digest}",
-                    JsonSerializer.SerializeToElement(new { recipeKey = recipe })), cancellationToken);
+                    JsonSerializer.SerializeToElement(new { recipeKey = recipe, findings = feasibility.Findings, feasibilitySessionId = state.ToolchainFeasibilitySessionId })), cancellationToken);
                 var saved = await SaveStateAsync(state with { ToolchainBlockerDecisionId = blocker.Id },
                     revision, reviewId, $"toolchain-feasibility-blocker:{blocker.Id:N}", context, cancellationToken);
                 return (saved.State, saved.Revision, false);
@@ -3059,41 +3060,16 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         CancellationToken cancellationToken)
     {
         var stateKey = ProjectStateKey(state.WorkstreamId, state.IntakeConversationId ?? state.AcceptedVision?.ConversationId, state.IntakeId);
-        try
-        {
-            var saved = await context.Platform.WriteOperatingStateAsync(
-                new WriteAgentOperatingStateRequest<GameDirectorOperatingState>(
-                    stateKey, StateSchema, 2, state.Phase.ToString(),
-                    new Dictionary<string, string>
-                    {
-                        ["acceptedPitch"] = state.AcceptedVision?.Digest ?? "pending",
-                        ["proposalRevision"] = (state.Proposals.LastOrDefault()?.Revision ?? 0).ToString(),
-                        ["workstreamId"] = state.WorkstreamId?.ToString("D") ?? "intake",
-                        ["boardId"] = state.BoardId?.ToString("D") ?? "pending"
-                    },
-                    [state.Phase.ToString()], Digest(JsonSerializer.Serialize(state)), [], reviewId,
-                    state, expectedRevision, idempotencyKey), cancellationToken);
-            await UpsertPortfolioIndexAsync(saved.Payload, stateKey, context, cancellationToken);
-            return (saved.Payload, saved.Revision);
-        }
-        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.Conflict)
-        {
-            var latest = await ReadStateByKeyAsync(stateKey, context, cancellationToken);
-            var merged = MergeConcurrentState(latest.State, state);
-            var saved = await context.Platform.WriteOperatingStateAsync(
-                new WriteAgentOperatingStateRequest<GameDirectorOperatingState>(
-                    stateKey, StateSchema, 2, merged.Phase.ToString(),
-                    new Dictionary<string, string>
-                    {
-                        ["acceptedPitch"] = merged.AcceptedVision?.Digest ?? "pending",
-                        ["workstreamId"] = merged.WorkstreamId?.ToString("D") ?? "intake",
-                        ["boardId"] = merged.BoardId?.ToString("D") ?? "pending"
-                    },
-                    [merged.Phase.ToString()], Digest(JsonSerializer.Serialize(merged)), [], reviewId,
-                    merged, latest.Revision, $"{idempotencyKey}:merge"), cancellationToken);
-            await UpsertPortfolioIndexAsync(saved.Payload, stateKey, context, cancellationToken);
-            return (saved.Payload, saved.Revision);
-        }
+        var saved = await DurableAgentState.UpdateVersionedAsync<GameDirectorOperatingState>(context.Platform, stateKey, StateSchema, 2,
+            latest => latest is null || latest.Revision == expectedRevision ? state : MergeConcurrentState(latest.Payload, state), cancellationToken,
+            new Dictionary<string,string> {
+                ["acceptedPitch"] = state.AcceptedVision?.Digest ?? "pending",
+                ["proposalRevision"] = (state.Proposals.LastOrDefault()?.Revision ?? 0).ToString(),
+                ["workstreamId"] = state.WorkstreamId?.ToString("D") ?? "intake",
+                ["boardId"] = state.BoardId?.ToString("D") ?? "pending"
+            }, state.Phase.ToString());
+        await UpsertPortfolioIndexAsync(saved.Payload, stateKey, context, cancellationToken);
+        return (saved.Payload, saved.Revision);
     }
 
     internal static GameDirectorOperatingState MergeConcurrentState(
@@ -3160,44 +3136,12 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     {
         var conversationId = state.IntakeConversationId ?? state.AcceptedVision?.ConversationId;
         if (!conversationId.HasValue) return;
-        AgentOperatingState<GameDirectorPortfolioIndex>? current = null;
-        try
-        {
-            current = await context.Platform.ReadOperatingStateAsync<GameDirectorPortfolioIndex>(
-                PortfolioStateKey, cancellationToken);
-        }
-        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound)
-        {
-            // The first project creates the portfolio index.
-        }
         var entry = new GameDirectorPortfolioEntry(
             stateKey, state.WorkstreamId, conversationId.Value, state.TeamId, state.BoardId,
             state.WorkingTitle ?? $"Game {conversationId.Value.ToString("N")[..8]}", state.Phase, DateTimeOffset.UtcNow) { IntakeId = state.IntakeId };
-        var projects = MergePortfolioEntry(current?.Payload.Projects ?? [], entry);
-        if (ReferenceEquals(projects, current?.Payload.Projects)) return;
-        try
-        {
-            _ = await context.Platform.WriteOperatingStateAsync(
-                new WriteAgentOperatingStateRequest<GameDirectorPortfolioIndex>(
-                    PortfolioStateKey, "com.csweet.video-game-director.portfolio.v1", 1, "Active",
-                    new Dictionary<string, string> { ["projectCount"] = projects.Count.ToString() },
-                    [], Digest(JsonSerializer.Serialize(projects)), [], Guid.NewGuid(),
-                    new GameDirectorPortfolioIndex { Projects = projects }, current?.Revision,
-                    $"portfolio-index:{entry.IntakeId?.ToString("N") ?? entry.ConversationId.ToString("N")}:{entry.WorkstreamId?.ToString("N") ?? "intake"}:{state.Phase}"), cancellationToken);
-        }
-        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.Conflict)
-        {
-            var latest = await context.Platform.ReadOperatingStateAsync<GameDirectorPortfolioIndex>(PortfolioStateKey, cancellationToken);
-            var merged = MergePortfolioEntry(latest?.Payload.Projects ?? [], entry);
-            if (ReferenceEquals(merged, latest?.Payload.Projects)) return;
-            _ = await context.Platform.WriteOperatingStateAsync(
-                new WriteAgentOperatingStateRequest<GameDirectorPortfolioIndex>(
-                    PortfolioStateKey, "com.csweet.video-game-director.portfolio.v1", 1, "Active",
-                    new Dictionary<string, string> { ["projectCount"] = merged.Count.ToString() },
-                    [], Digest(JsonSerializer.Serialize(merged)), [], Guid.NewGuid(),
-                    new GameDirectorPortfolioIndex { Projects = merged }, latest?.Revision,
-                    $"portfolio-index-merge:{entry.IntakeId?.ToString("N") ?? entry.ConversationId.ToString("N")}:{state.Phase}"), cancellationToken);
-        }
+        await DurableAgentState.UpdateAsync<GameDirectorPortfolioIndex>(context.Platform, PortfolioStateKey,
+            "com.csweet.video-game-director.portfolio.v1", 1,
+            latest => new() { Projects = MergePortfolioEntry(latest?.Projects ?? [], entry) }, cancellationToken);
     }
 
     internal static IReadOnlyList<GameDirectorPortfolioEntry> MergePortfolioEntry(
@@ -3210,7 +3154,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             throw new InvalidOperationException("The project conversation is already bound to another Workstream.");
         return projects.Where(x => (x.ConversationId != entry.ConversationId || x.IntakeId != entry.IntakeId) &&
                 (!entry.WorkstreamId.HasValue || x.WorkstreamId != entry.WorkstreamId))
-            .Append(entry).OrderByDescending(x => x.UpdatedAt).Take(100).ToList();
+            .Append(entry).OrderByDescending(x => x.UpdatedAt).ToList();
     }
 
     internal static string Digest(string value) =>

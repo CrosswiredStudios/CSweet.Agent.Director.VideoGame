@@ -17,7 +17,7 @@
   },
   "id": "com.csweet.video-game-director",
   "name": "Marcus Vale",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -651,10 +651,26 @@
       "scope": "organization",
       "purpose": "Review escalated exact resource plans within the current reporting chain.",
       "modelVisible": false
+    },
+    {
+      "name": "work.issues.read.v1",
+      "scope": "organization",
+      "purpose": "Coordinate source-bound issues and scoped advice within current board grants; no execution or acceptance authority."
+    },
+    {
+      "name": "work.issues.reconcile.v1",
+      "scope": "organization",
+      "purpose": "Coordinate source-bound issues and scoped advice within current board grants; no execution or acceptance authority."
+    },
+    {
+      "name": "work.issues.commission.v1",
+      "scope": "organization",
+      "purpose": "Coordinate source-bound issues and scoped advice within current board grants; no execution or acceptance authority."
     }
   ],
   "events": {
     "subscribes": [
+      "work.issues.changed.v1",
       "com.csweet.calendar.reminder-due.v1",
       "com.csweet.user.message.received.v1",
       "com.csweet.agent.onboarded.v1",

@@ -124,7 +124,7 @@ public sealed class ProductionCommitmentTests
         var fresh = Assert.Single(decisions);
         Assert.Equal(blocker.Id, fresh.SupersedesDecisionId);
         if (feasible) Assert.Equal([provider.Eligibility.ProviderInstallationId.ToString("N"), "defer-selection"], fresh.Options.Select(x => x.Id).ToArray());
-        else Assert.Contains("Unresolved dependency", fresh.Summary);
+        else { Assert.DoesNotContain("Unresolved dependency", fresh.Summary); Assert.Contains("Unresolved dependency", fresh.TypeData!.Value.GetProperty("findings").GetRawText()); }
     }
 
     [Fact]
@@ -413,6 +413,35 @@ public sealed class ProductionCommitmentTests
                     "producer", "Producer", members, [], members.Count, false), state.WorkstreamId)); })
             .RegisterCapability<ReadDecisionRequest, IReadOnlyList<DecisionRecord>>(PlatformCapabilities.DecisionRead,
                 (_, _) => Task.FromResult<IReadOnlyList<DecisionRecord>>([]));
+
+    [Theory]
+    [InlineData(true, "Pending", true)]
+    [InlineData(false, "Pending", false)]
+    [InlineData(true, "Decided", false)]
+    public void SameRecipeBlockerRequiresVerifiedCurrentEvidenceAndCannotOverrideManagement(bool feasible, string status, bool replaces)
+    {
+        var state = State(); var pitch = state.AcceptedVision!;
+        var recipe = "phaser.web-2d.v1"; var id = Guid.NewGuid();
+        state = state with { ToolchainBlockerDecisionId = id,
+            ToolchainFeasibilityEvidence = new(pitch.Digest, recipe, ["web"], feasible, ["Retained full findings"], [pitch.ArtifactId], DateTimeOffset.UtcNow) };
+        var prior = JsonSerializer.Deserialize<DecisionRecord>("{}")! with { Id = id, WorkstreamId = state.WorkstreamId!.Value,
+            Status = status, AuthorityRuleKey = "technical-feasibility-blocker", TypeKey = "video-game.toolchain-selection.v1",
+            TypeData = JsonSerializer.SerializeToElement(new { recipeKey = recipe }),
+            Evidence = [new("artifact", pitch.ArtifactId, pitch.ArtifactRevisionId, pitch.ArtifactRevisionHash, "video-game.vision.v1", "Accepted")] };
+        Assert.Equal(replaces ? id : (Guid?)null, VideoGameDirectorAgent.SupersededRecipeBlocker(state, prior, recipe));
+        Assert.Null(VideoGameDirectorAgent.SupersededRecipeBlocker(state with { AcceptedVision = pitch with { ArtifactRevisionHash = "changed" } }, prior, recipe));
+    }
+
+    [Fact]
+    public void PortfolioMergeRetainsIndependentProjectsBeyondOneDiscoveryPage()
+    {
+        var entries = Enumerable.Range(0, 125).Select(i => new GameDirectorPortfolioEntry("project:" + i, Guid.NewGuid(), Guid.NewGuid(),
+            null, null, "Project " + i, GameDirectorPhase.Discovery, DateTimeOffset.UtcNow)).ToArray();
+        var updated = entries[0] with { WorkingTitle = "Updated title" };
+        var merged = VideoGameDirectorAgent.MergePortfolioEntry(entries, updated);
+        Assert.Equal(entries.Length, merged.Count);
+        Assert.All(entries.Skip(1), entry => Assert.Contains(entry, merged));
+    }
 
     private static GameDirectorOperatingState State() => new() {
         WorkstreamId = Guid.NewGuid(), TeamId = Guid.NewGuid(), WorkingTitle = "Gridlock",
