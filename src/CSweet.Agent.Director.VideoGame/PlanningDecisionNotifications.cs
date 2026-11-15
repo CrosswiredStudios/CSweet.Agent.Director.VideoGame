@@ -60,24 +60,28 @@ public sealed partial class VideoGameDirectorAgent
                 revision.ContentSha256 == evidence.Digest)
                 plan = revision.Content;
         }
+        var resources = await ReadPlanningResourcesAsync(decision, context, token);
         var review = plan is null || state.AcceptedVision is null
             ? new PlanningDirection("request-more-evidence",
                 "The exact accepted production plan and game vision must be available before creative direction can resolve this planning question.", false)
-            : await GeneratePlanningDirectionAsync(decision, state.AcceptedVision.Markdown, plan, context, token);
+            : await GeneratePlanningDirectionAsync(decision, state.AcceptedVision.Markdown, plan, context, token, resources);
+        await VerifyPlanningResourcesAsync(decision, resources, context, token);
         if (review.RequiresOwner)
         {
-            _ = await context.Platform.RequestDecisionAsync(new DecisionRequest(decision.WorkstreamId,
+            var escalation = await context.Platform.RequestDecisionAsync(new DecisionRequest(decision.WorkstreamId,
                 decision.TypeKey, decision.Summary, "material-strategy-change",
                 decision.TypeData is { } payload && payload.TryGetProperty("kind", out var action) && action.GetString() == "ceo-hold"
                     ? [.. decision.Options, new("pause-affected-work", "Keep named tickets on hold", "Continue independent work while the named decision remains open.")] : decision.Options,
                 decision.RecommendedOptionId, decision.Evidence, decision.DueAt,
                 "A material change to the accepted project direction requires owner approval.",
                 decision.Id, $"creative-owner-escalation:{decision.Id:N}", decision.TypeData), token);
+            if (resources is not null) await RememberPlanningBasisAsync(escalation.Id, resources.Fingerprint, context, token);
             return;
         }
         _ = await context.Platform.DecideDecisionAsync(new DecideDecisionRequest(decision.Id,
             decision.Revision, review.OptionId, review.Rationale,
             $"creative-planning-direction:{decision.Id:N}:{decision.Revision}"), token);
+        if (resources is not null) await RememberPlanningBasisAsync(decision.Id, resources.Fingerprint, context, token);
     }
 
     internal sealed record PlanningDirection(string OptionId, string Rationale, bool RequiresOwner);
@@ -87,16 +91,20 @@ public sealed partial class VideoGameDirectorAgent
     {
         var result = JsonSerializer.Deserialize<PlanningDirection>(response,
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        if (result is null || string.IsNullOrWhiteSpace(result.Rationale) || result.Rationale.Length > 4000 ||
+        if (result is null || string.IsNullOrWhiteSpace(result.Rationale) ||
             (!result.RequiresOwner && !options.Any(x => x.Id == result.OptionId)))
-            throw new InvalidOperationException("Creative planning review must select a supplied option with a bounded rationale.");
+            throw new InvalidOperationException("Creative planning review must select a supplied option with a rationale.");
         return result;
     }
 
     private async Task<PlanningDirection> GeneratePlanningDirectionAsync(DecisionRecord decision,
-        string acceptedVision, string acceptedPlan, AgentRuntimeContext context, CancellationToken token)
+        string acceptedVision, string acceptedPlan, AgentRuntimeContext context, CancellationToken token,
+        PlanningResourceContext? resources = null)
     {
         var completedEvidence = await ReadCompletedPlanningEvidenceAsync(decision, context, token);
+        var directions = (await context.Platform.ReadDecisionsAsync(new(WorkstreamId: decision.WorkstreamId), token))
+            .Where(d => d.WorkstreamId == decision.WorkstreamId && d.Status == DecisionStatuses.Decided && d.SupersededByDecisionId is null)
+            .Select(d => new { d.Id, d.TypeKey, d.AuthorityRuleKey, d.SelectedOptionId, d.Rationale, d.DecidedByOrganizationUserId, d.Revision }).ToArray();
         var provider = Settings.GetGuid("llmProviderId") ??
             throw new InvalidOperationException("Configure the Video Game Director LLM provider.");
         var client = context.CreateChatClient(new AgentLlmSelection(provider, Settings.GetString("llmModel"),
@@ -118,9 +126,20 @@ public sealed partial class VideoGameDirectorAgent
                 A recommendation card, queued check, or another role's prose does not prove completed work.
                 Do not demand implementation evidence that is already verified here. Do not infer unmeasured
                 performance from a successful dependency check or silently waive accepted requirements.
+                Current roster, staffing approvals and resource readiness are supplied as separate authoritative facts.
+                A planning brief does not itself approve staffing, builds or spending; that disclaimer is not a prohibition
+                and does not invalidate separate approvals or an already fulfilled hire. Approved staffing is not a filled
+                seat; a filled seat is not verified build capacity; only a Ready resource establishes that capacity.
+                Drafting, decomposition and estimation do not require permission to execute. Resolve missing resources
+                through their existing request/approval workflow; do not manufacture a second blanket owner approval.
+                Reassess earlier agent recommendations against current facts, rather than repeating their assumptions.
+                Preserve explicit human decisions, declined requests, real budget boundaries and technical findings.
+                For a reassessment, explain what changed and the precise remaining dependency. Advice or a completed
+                callback never grants execution authority or waives independent review required by the work.
                 """),
             new ChatMessage(ChatRole.User, JsonSerializer.Serialize(new {
-                decision.Summary, decision.Options, decision.TypeData, acceptedVision, acceptedPlan, completedEvidence
+                decision.Summary, decision.Options, decision.TypeData, acceptedVision, acceptedPlan, completedEvidence, resources, directions,
+                priorDirection = new { decision.SelectedOptionId, decision.Rationale }
             }))
         ], cancellationToken: token);
         return ParsePlanningDirection(response.Text, decision.Options);

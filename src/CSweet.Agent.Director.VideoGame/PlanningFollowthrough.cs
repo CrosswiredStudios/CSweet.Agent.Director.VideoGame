@@ -36,12 +36,9 @@ public sealed partial class VideoGameDirectorAgent
         if (decision.WorkstreamId != project || current.State.WorkstreamId != project || decision.TypeKey != "video-game.management-direction.v1")
             return PersonalTodoResult.Blocked("The planning decision belongs to a different project or authority workflow.");
         // A replacement still needs an answer; supersession alone cannot close this commitment.
-        for (var depth = 0; decision.SupersededByDecisionId is { } replacement && depth < 4; depth++)
-        {
-            decision = (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(replacement), token)).Single(x => x.Id == replacement);
-            if (decision.WorkstreamId != project || decision.TypeKey != "video-game.management-direction.v1")
-                return PersonalTodoResult.Blocked("The replacement decision belongs to another project or workflow.");
-        }
+        decision = await DecisionContinuations.ReadCurrentAsync(context.Platform, decision.Id, project, token);
+        if (decision is null || decision.TypeKey != "video-game.management-direction.v1")
+            return PersonalTodoResult.Blocked("The replacement decision is unavailable, cyclic, or belongs to another project or workflow.");
         if (decision.Status == DecisionStatuses.Decided && decision.SelectedOptionId == "request-more-evidence" && decision.AuthorityRuleKey == "work-planning")
         {
             var evidence = await ReadCompletedPlanningEvidenceAsync(decision, context, token);

@@ -1,6 +1,6 @@
-﻿# Director 0.9.0
+# Director 0.10.0
 
-Durable issues, scoped reconciliation and concise current-state attention. See [release notes](releases/0.9.0.md).
+Current planning context and evidence-based recovery of agent-authored authorization questions. See [release notes](releases/0.10.0.md).
 
 # Video Game Director 0.8.3
 

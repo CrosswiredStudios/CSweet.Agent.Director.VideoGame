@@ -5,6 +5,14 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class PlanningDecisionNotificationTests
 {
+    [Fact]
+    public void CompleteAuthoredPlanningRationaleHasNoArbitraryTextLimit()
+    {
+        var rationale = string.Concat(Enumerable.Repeat("Preserve exact approved scope and use current staffing facts. ", 200));
+        var review = VideoGameDirectorAgent.ParsePlanningDirection(JsonSerializer.Serialize(new {
+            optionId = "continue-current-plan", rationale, requiresOwner = false }), [new("continue-current-plan", "Continue", null)]);
+        Assert.Equal(rationale, review.Rationale);
+    }
     [Theory]
     [InlineData("Pending", "video-game.management-direction.v1", true)]
     [InlineData("Decided", "video-game.management-direction.v1", false)]
