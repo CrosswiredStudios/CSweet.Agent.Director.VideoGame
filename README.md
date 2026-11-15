@@ -1,6 +1,6 @@
-# Director 0.10.0
+# Director 0.11.0
 
-Current planning context and evidence-based recovery of agent-authored authorization questions. See [release notes](releases/0.10.0.md).
+Shared SDK manager recovery discovers blocked work on current directly reporting boards, creates a durable review commitment and binds justified retries to the retained task and revision. Communication mentions wake discovery; normal attention reviews recover missed notifications. No permissions or approvals are inferred from a mention. See [release notes](releases/0.11.0.md).
 
 # Video Game Director 0.8.3
 
