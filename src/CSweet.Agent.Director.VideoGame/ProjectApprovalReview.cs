@@ -136,7 +136,7 @@ public sealed partial class VideoGameDirectorAgent
         if (verdict.StartsWith("json", StringComparison.OrdinalIgnoreCase)) verdict = verdict[4..].Trim();
         var assessment = JsonSerializer.Deserialize<ProjectVerdict>(verdict, ProjectApprovalJson)
             ?? throw new InvalidOperationException("Project review did not return a decision.");
-        if (assessment.DecisionKind is not ("Approve" or "RequestRevision" or "Reject" or "Escalate") || string.IsNullOrWhiteSpace(assessment.Rationale) || assessment.Rationale.Length > 4000)
+        if (assessment.DecisionKind is not ("Approve" or "RequestRevision" or "Reject" or "Escalate") || string.IsNullOrWhiteSpace(assessment.Rationale))
             throw new InvalidOperationException("Project review requires a supported decision and bounded rationale.");
         return assessment;
         }, token);

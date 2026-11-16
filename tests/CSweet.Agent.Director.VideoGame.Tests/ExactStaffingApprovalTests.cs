@@ -6,6 +6,17 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 public sealed class ExactStaffingApprovalTests
 {
     [Fact]
+    public void Verbose_review_preserves_the_complete_correction_and_manager_direction()
+    {
+        var explanation = new string('x', 14000) + " Keep independent escalation and artifact-producing permissions.";
+        var judgment = new VideoGameDirectorAgent.StaffingJudgment(false, explanation, [explanation]);
+        Assert.Equal(judgment, VideoGameDirectorAgent.ValidateStaffingJudgment(judgment));
+        Assert.EndsWith(explanation, VideoGameDirectorAgent.DescribeStaffingRevision(judgment));
+        var message = "Budget: " + explanation + ".";
+        Assert.Equal(message, Assert.Single(VideoGameDirectorAgent.CapturePlanningConstraints(message, Guid.NewGuid())).Text);
+    }
+
+    [Fact]
     public void LiveJustifiedNeedCannotApproveAMisclassifiedPackage()
     {
         var judgment = JsonSerializer.Deserialize<VideoGameDirectorAgent.StaffingJudgment>(File.ReadAllText(

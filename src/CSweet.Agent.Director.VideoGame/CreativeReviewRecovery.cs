@@ -66,7 +66,7 @@ public sealed partial class VideoGameDirectorAgent
         var summary = $"Naomi's creative review of the production brief could not complete after {CreativeReviewAttempts} attempts.{because} " +
             "Producer planning and staffing wait for this review. Choose how to continue.";
         var decision = await context.Platform.RequestDecisionAsync(new(input.WorkstreamId, CreativeReviewDecisionType,
-            summary[..Math.Min(summary.Length, 3000)], "material-strategy-change",
+            summary, "material-strategy-change",
             [new(RetryCreativeReviewOption, "Retry the creative review", "Naomi reviews the same brief again with a fresh round of attempts."),
              new(ReviseBriefOption, "Ask Gabriel to revise the brief", "Gabriel submits a new brief revision, which gets a new creative review."),
              new(KeepCreativeReviewPausedOption, "Keep it paused", "Planning and staffing stay blocked until you choose again.")],

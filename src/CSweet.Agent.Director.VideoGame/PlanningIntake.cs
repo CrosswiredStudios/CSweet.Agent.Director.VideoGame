@@ -10,7 +10,7 @@ public sealed partial class VideoGameDirectorAgent
         return Regex.Split(message, @"(?<=[.!?])\s+|[\r\n]+")
             .Select(x => x.Trim()).Where(x => x.Length > 0)
             .Where(x => Regex.IsMatch(x, @"\b(deadline|budget|forecast|quality.gated|external date|resource limit|reserved decision|spending|target date)\b", RegexOptions.IgnoreCase))
-            .Take(8).Select(x => new PlanningConstraintEvidence(x[..Math.Min(x.Length, 2000)], messageId,
+            .Select(x => new PlanningConstraintEvidence(x, messageId,
                 Regex.IsMatch(x, @"\b(every project|all projects|future projects|standing preference|by default)\b", RegexOptions.IgnoreCase)))
             .ToList();
     }

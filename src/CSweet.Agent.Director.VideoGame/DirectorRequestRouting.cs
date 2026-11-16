@@ -120,8 +120,8 @@ public sealed partial class VideoGameDirectorAgent
                 Options = new ChatOptions { MaxOutputTokens = 800 },
                 Normalize = route => route.Owner is not ("creative" or "delivery" or "platform" or "director")
                     ? throw new AgentModelJsonException($"owner \"{route.Owner}\" must be creative, delivery, platform or director")
-                    : string.IsNullOrWhiteSpace(route.Reason) || route.Reason.Length > 1000
-                        ? throw new AgentModelJsonException("reason must be one to 1000 characters")
+                    : string.IsNullOrWhiteSpace(route.Reason)
+                        ? throw new AgentModelJsonException("reason must be nonempty")
                         : route
             }, token);
         }

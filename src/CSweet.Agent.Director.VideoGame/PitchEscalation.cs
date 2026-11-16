@@ -60,7 +60,7 @@ public sealed partial class VideoGameDirectorAgent
             .Select(x => x.Artifact!.Payload.Deserialize<PitchReply>(PitchProtocol.Json)?.OwnerDecisionId)
             .LastOrDefault(x => x.HasValue);
         var decision = await context.Platform.RequestDecisionAsync(new(project, "video-game.management-direction.v1",
-            question[..Math.Min(question.Length, 3000)], "material-strategy-change",
+            question, "material-strategy-change",
             [new("provide-direction", "Provide direction", "Supply the specific binding answer in your response."),
              new("continue-current-plan", "Continue current plan", "Proceed within accepted scope and existing resource authority, using completion forecasts."),
              new("pause-affected-work", "Keep affected work paused", "Retain this decision dependency while other authorized work continues.")],

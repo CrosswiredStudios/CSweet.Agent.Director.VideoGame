@@ -43,13 +43,9 @@ internal static class PitchProtocol
     {
         var problems = new List<string>();
         if (string.IsNullOrWhiteSpace(review.Guidance)) problems.Add("guidance is empty");
-        else if (review.Guidance.Length > 16000) problems.Add($"guidance has {review.Guidance.Length} characters; shorten it to at most 16000");
         var suggested = review.SuggestedMarkdown ?? "";
-        if (suggested.Length > 48000) problems.Add($"suggestedMarkdown has {suggested.Length} characters; return an empty string or at most 48000");
         if (review.RequiresOwner && string.IsNullOrWhiteSpace(review.OwnerQuestion))
             problems.Add("requiresOwner needs one focused ownerQuestion; otherwise set requiresOwner to false");
-        else if (review.RequiresOwner && review.OwnerQuestion!.Length > 3000)
-            problems.Add($"ownerQuestion has {review.OwnerQuestion.Length} characters; ask one focused question of at most 3000");
         if (problems.Count > 0) throw new AgentModelJsonException(string.Join("; ", problems));
         return review with { SuggestedMarkdown = suggested, OwnerQuestion = review.RequiresOwner ? review.OwnerQuestion : null };
     }
@@ -66,7 +62,7 @@ internal static class PitchProtocol
     }
 
     public static bool CanPlan(ProducerReview review) => CollaborationActions.IsReady(review.Ready, review.Questions, [], review.Rationale) && ValidDocument(review.DraftMarkdown);
-    public static bool ValidDocument(string? markdown) => !string.IsNullOrWhiteSpace(markdown) && markdown.Length <= 192000 &&
+    public static bool ValidDocument(string? markdown) => !string.IsNullOrWhiteSpace(markdown) &&
         new[] { "Scope", "Player experience", "Non-goals", "Acceptance criteria", "Deliverables", "Constraints", "Risks", "Open questions" }
             .All(heading => markdown.Contains($"## {heading}", StringComparison.OrdinalIgnoreCase));
     public static bool Matches(PitchReview review, PitchReply reply) => review.PitchDigest == reply.PitchDigest && CollaborationActions.CanAcceptHandoff(

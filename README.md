@@ -1,4 +1,8 @@
-# Director 0.12.0
+# Director 0.13.0
+
+Staffing judgments retain full explanations and required corrections. Initial coverage follows
+approaching work without historical-velocity or default-team requirements. Accountability describes
+responsibility; permissions, staffing and spending retain their separate platform authority.
 
 Current blocked-operation facts (`work.recovery.read.v1`) and `work.recovery.changed.v1` wake
 recovery without treating historical denial text as current authority. Read-only planning findings
@@ -7,7 +11,7 @@ use `work.issues.propose.v1` for the current owner to decide through
 when another fails, while preserving the failure for diagnosis. These interactions grant no new
 editing, staffing, spending or scope authority.
 
-Shared SDK manager recovery discovers blocked work on current directly reporting boards, creates a durable review commitment and binds justified retries to the retained task and revision. Communication mentions wake discovery; normal attention reviews recover missed notifications. No permissions or approvals are inferred from a mention. See [release notes](releases/0.12.0.md).
+Shared SDK manager recovery discovers blocked work on current directly reporting boards, creates a durable review commitment and binds justified retries to the retained task and revision. Communication mentions wake discovery; normal attention reviews recover missed notifications. No permissions or approvals are inferred from a mention. See [release notes](releases/0.13.0.md).
 
 # Video Game Director 0.8.3
 
