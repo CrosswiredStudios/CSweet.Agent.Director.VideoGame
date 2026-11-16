@@ -50,9 +50,11 @@ public sealed class ProductionCommitmentTests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task BlockedReviewGetsFreshEvidenceForTheCorrectRecipeBeforeReplacingTheDecision(bool feasible)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task ResumedBlockedReviewGetsFreshSpecialistEvidenceBeforeReplacingTheDecision(bool feasible, bool sameRecipe)
     {
         var agent = new VideoGameDirectorAgent();
         var victor = Guid.NewGuid();
@@ -60,7 +62,8 @@ public sealed class ProductionCommitmentTests
         var state = State();
         var pitch = state.AcceptedVision! with { Markdown = "- **Non-goals:** mobile, 3D\nUse Phaser for 2D web." };
         var now = DateTimeOffset.UtcNow;
-        const string oldRecipe = "babylon.web-3d.v1", currentRecipe = "phaser.web-2d.v1";
+        const string currentRecipe = "phaser.web-2d.v1";
+        var oldRecipe = sameRecipe ? currentRecipe : "babylon.web-3d.v1";
         var oldEvidence = new CSweet.Agent.SDK.VideoGame.Contracts.ToolchainFeasibilityEvidenceV1(pitch.Digest, oldRecipe,
             ["web"], false, ["The Babylon scaffold cannot verify the recommended Phaser version."], [pitch.ArtifactId], now);
         var blocker = new DecisionRecord(Guid.NewGuid(), state.WorkstreamId!.Value, "video-game.toolchain-selection.v1",

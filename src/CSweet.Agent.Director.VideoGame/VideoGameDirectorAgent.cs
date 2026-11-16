@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.14.0";
+    public override string Version => "0.14.1";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -511,8 +511,11 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                 request.Transcript.Last(t => t.Artifact is not null).SpeakerOrganizationUserId != request.Counterpart.OrganizationUserId)
                 return AgentCoordinationTurnResult.Blocked("The feasibility assessment must come from the Technical Director assigned to this project review.");
             var evidence = latestArtifact.Payload.Deserialize<ToolchainFeasibilityEvidenceV1>();
+            // Resume gives the initiator a non-finalizing turn. Send fresh source/catalog
+            // evidence to the specialist instead of recording the old rejection again.
             if (!request.IsFinalization && evidence is not null && !current.State.ToolchainSelectionDecisionId.HasValue &&
-                evidence.AcceptedVisionDigest == feasibilityVision.Digest && evidence.RecipeKey != DetermineRequiredRecipe(current.State) &&
+                evidence.AcceptedVisionDigest == feasibilityVision.Digest &&
+                (!evidence.Feasible || evidence.RecipeKey != DetermineRequiredRecipe(current.State)) &&
                 request.Transcript.LastOrDefault(t => t.Artifact?.Type == ToolchainFeasibilityRequestType) is { } earlier &&
                 earlier.SpeakerOrganizationUserId == request.Self.OrganizationUserId && earlier.Artifact!.Key == feasibilityVision.Digest &&
                 earlier.Artifact.Payload.TryGetProperty("requiredRecipeKey", out var asked) && asked.GetString() == evidence.RecipeKey)
