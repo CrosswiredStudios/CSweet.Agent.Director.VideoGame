@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.13.0";
+    public override string Version => "0.14.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -2031,6 +2031,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var priorBlocker = blockerId.HasValue
             ? (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(blockerId), cancellationToken)).SingleOrDefault()
             : null;
+        var requirementReview = await ReconcileRequirementReviewAsync(state, revision, reviewId,
+            technical.AgentInstallationId!.Value, catalog, priorBlocker, context, cancellationToken);
+        state = requirementReview.State; revision = requirementReview.Revision;
+        if (requirementReview.Stop) return (state, revision, false);
         var replaces = SupersededRecipeBlocker(state, priorBlocker, recipe);
         if (state.ToolchainFeasibilityEvidence is { } previous && previous.RecipeKey != recipe &&
             previous.AcceptedVisionDigest == acceptedVision.Digest && !state.ToolchainSelectionDecisionId.HasValue &&
@@ -2068,7 +2072,8 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     "Get the Technical Director's toolchain feasibility review",
                     "Tracks the Technical Director's feasibility review of the chosen toolchain against the accepted vision.",
                     context, cancellationToken);
-                var saved = await SaveStateAsync(state with { ToolchainFeasibilitySessionId = session.Id },
+                var saved = await SaveStateAsync(state with { ToolchainFeasibilitySessionId = session.Id,
+                    ToolchainReviewBasis = RequirementReviewBasis(state, technical.AgentInstallationId!.Value, catalog, priorBlocker) },
                     revision, reviewId, $"toolchain-feasibility-session:{session.Id:N}", context, cancellationToken);
                 return (saved.State, saved.Revision, false);
             }
@@ -2081,25 +2086,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             !string.Equals(feasibility.RecipeKey, recipe, StringComparison.Ordinal) ||
             targets.Except(feasibility.TargetKeys, StringComparer.Ordinal).Any())
         {
-            if (!blockerId.HasValue || replaces.HasValue)
+            if (!blockerId.HasValue || replaces.HasValue || priorBlocker is { Status: DecisionStatuses.Pending } && !RequirementDecisions.IsGrounded(priorBlocker))
             {
-                var blocker = await context.Platform.RequestDecisionAsync(new DecisionRequest(
-                    workstreamId,
-                    VideoGameDecisionTypeKeys.ToolchainSelection,
-                    $"The technical review found unresolved feasibility requirements for `{recipe}`. Choose remediation, a target change, or a pause. Full findings are retained with the review.",
-                    "technical-feasibility-blocker",
-                    [
-                        new DecisionOption("remediate", "Remediate findings", "Create and complete exact board work for every blocking technical finding."),
-                        new DecisionOption("change-target", "Change project target", "Propose a material target or dimensionality change with impact evidence."),
-                        new DecisionOption("pause", "Pause project", "Keep implementation blocked while preserving the accepted vision.")
-                    ],
-                    "remediate",
-                    FeasibilitySources(feasibility, acceptedVision, "Submitted"),
-                    DateTimeOffset.UtcNow.AddDays(2),
-                    "Implementation and build work remain blocked until exact Technical Director feasibility evidence is accepted.",
-                    replaces,
-                    $"toolchain-infeasible:{workstreamId:N}:{recipe}:{acceptedVision.Digest}",
-                    JsonSerializer.SerializeToElement(new { recipeKey = recipe, findings = feasibility.Findings, feasibilitySessionId = state.ToolchainFeasibilitySessionId })), cancellationToken);
+                var blocker = await RequestRequirementDecisionAsync(state, priorBlocker, context, cancellationToken);
                 var saved = await SaveStateAsync(state with { ToolchainBlockerDecisionId = blocker.Id },
                     revision, reviewId, $"toolchain-feasibility-blocker:{blocker.Id:N}", context, cancellationToken);
                 return (saved.State, saved.Revision, false);
@@ -3113,6 +3102,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             SelectedToolchainRecipeKey = desired.SelectedToolchainRecipeKey ?? latest.SelectedToolchainRecipeKey,
             ToolchainFeasibilitySessionId = desired.ToolchainFeasibilitySessionId ?? latest.ToolchainFeasibilitySessionId,
             ToolchainFeasibilityEvidence = desired.ToolchainFeasibilityEvidence ?? latest.ToolchainFeasibilityEvidence,
+            ToolchainReviewBasis = desired.ToolchainReviewBasis ?? latest.ToolchainReviewBasis,
             WorkstreamProposalId = desired.WorkstreamProposalId ?? latest.WorkstreamProposalId,
             WorkstreamProposalSessionId = desired.WorkstreamProposalSessionId ?? latest.WorkstreamProposalSessionId,
             ProposalWait = desired.WorkstreamId.HasValue ? null :

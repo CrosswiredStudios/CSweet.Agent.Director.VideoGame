@@ -137,6 +137,7 @@ public sealed record GameDirectorOperatingState
     public string? AssetStrategyMode { get; init; }
     public Guid? ToolchainSelectionDecisionId { get; init; }
     public Guid? ToolchainBlockerDecisionId { get; init; }
+    public string? ToolchainReviewBasis { get; init; }
     public string? SelectedToolchainRecipeKey { get; init; }
     public Guid? ToolchainFeasibilitySessionId { get; init; }
     public ToolchainFeasibilityEvidenceV1? ToolchainFeasibilityEvidence { get; init; }

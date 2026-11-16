@@ -71,7 +71,8 @@ public sealed class ProductionCommitmentTests
             ToolchainBlockerDecisionId = blocker.Id, SpecialistEmployeeIds = new Dictionary<string,Guid> { ["game-technical-director"] = victor } };
         Assert.Null(VideoGameDirectorAgent.SupersededRecipeBlocker(state, blocker with { Status = "Decided" }, currentRecipe));
         Assert.Null(VideoGameDirectorAgent.SupersededRecipeBlocker(state, blocker with { Evidence = [] }, currentRecipe));
-        var runtime = RosterRuntime(state, [Technical(victor)]);
+        var technicalMember = Technical(victor);
+        var runtime = RosterRuntime(state, [technicalMember]);
         var empty = JsonSerializer.SerializeToElement(new {});
         var definition = new ToolchainAdapterDefinition(Guid.NewGuid(), "node-typescript.v1", 1, "Node", "pkg", "1", "hash",
             [], empty, empty, [], [], now);
@@ -102,7 +103,14 @@ public sealed class ProductionCommitmentTests
         runtime.RegisterCapability<DecisionRequest, DecisionRecord>(PlatformCapabilities.DecisionRequest,
             (r, _) => { decisions.Add(r); return Task.FromResult(blocker with { Id = Guid.NewGuid(), AuthorityRuleKey = r.AuthorityRuleKey,
                 Status = feasible ? "Decided" : "Pending", SelectedOptionId = feasible ? r.RecommendedOptionId : null }); });
+        runtime.RegisterCapability<JsonElement, object>(PlatformCapabilities.LlmChatStream, (_, _) => Task.FromResult<object>(new {
+            text = """{"question":"How should we address the unresolved requirement?","blockingImpact":"Only the affected work waits.","choices":[{"label":"Investigate the requirement","consequences":"Obtain missing facts","followThrough":"Ask the technical owner for exact dependency evidence"},{"label":"Revise the requirement","consequences":"Requires owner authority","followThrough":"Propose the precise change for approval"}],"recommendedChoice":0}"""
+        }));
         var context = runtime.CreateContext();
+        Assert.True((await agent.ExecuteCapabilityAsync(new(Guid.NewGuid(), AgentConfigurationCapabilities.Update,
+            JsonSerializer.SerializeToElement(new UpdateAgentConfigurationRequest(new Dictionary<string, JsonElement> {
+                ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid()),
+                ["llmModel"] = JsonSerializer.SerializeToElement("test") }))), context, default)).Succeeded);
         for (int i = 0; i < 2; i++)
             Assert.False((await agent.EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), context, default)).Ready);
         Assert.Equal(1, resumeCount);
@@ -119,12 +127,15 @@ public sealed class ProductionCommitmentTests
         Assert.Empty(decisions);
         var corrected = state with { ToolchainFeasibilityEvidence = oldEvidence with { RecipeKey = currentRecipe, Feasible = feasible,
             Findings = [feasible ? "Phaser is supported" : "Unresolved dependency"] } };
+        corrected = corrected with { ToolchainReviewBasis = VideoGameDirectorAgent.RequirementReviewBasis(corrected,
+            technicalMember.AgentInstallationId!.Value, [provider, provider], blocker) };
         var outcome = await agent.EnsureToolchainDecisionAsync(corrected, 1, Guid.NewGuid(), context, default);
         Assert.Equal(feasible, outcome.Ready);
         var fresh = Assert.Single(decisions);
         Assert.Equal(blocker.Id, fresh.SupersedesDecisionId);
         if (feasible) Assert.Equal([provider.Eligibility.ProviderInstallationId.ToString("N"), "defer-selection"], fresh.Options.Select(x => x.Id).ToArray());
-        else { Assert.DoesNotContain("Unresolved dependency", fresh.Summary); Assert.Contains("Unresolved dependency", fresh.TypeData!.Value.GetProperty("findings").GetRawText()); }
+        else { Assert.DoesNotContain("Unresolved dependency", fresh.Summary); Assert.Contains("Unresolved dependency", fresh.TypeData!.Value.GetRawText());
+            Assert.Contains(fresh.Options, o => o.Id == "provide-direction"); }
     }
 
     [Fact]
@@ -405,6 +416,40 @@ public sealed class ProductionCommitmentTests
     private static AgentTeammate Technical(Guid employee) => new(employee.ToString("D"), "Technical Director", "Agent",
         null, null, "Teammate", "Active") { AgentInstallationId = Guid.NewGuid(), RuntimeEligibility = "Eligible",
         DeclaredRoleKeys = ["game-technical-director"], EffectiveCapabilities = ["work.execution.run"] };
+
+    [Fact]
+    public async Task RetainedNegativeReviewResumesOnceForChangedEvidenceWithoutBlindRetryOrOverridingAnsweredDirection()
+    {
+        var state = State(); var expert = Guid.NewGuid(); var installation = Guid.NewGuid(); var sessionId = Guid.NewGuid();
+        state = state with { ToolchainFeasibilitySessionId = sessionId,
+            SpecialistEmployeeIds = new Dictionary<string, Guid> { ["game-technical-director"] = expert },
+            ToolchainFeasibilityEvidence = new(state.AcceptedVision!.Digest, "phaser.web-2d.v1", ["web"], false,
+                ["Missing Windows profile inferred from supported alternatives"], [state.AcceptedVision.ArtifactId], DateTimeOffset.UtcNow) };
+        var session = JsonSerializer.Deserialize<AgentCoordinationSession>("{}")! with { Id = sessionId, Status = "Blocked", Revision = 2,
+            Target = new(expert, installation, "Technical specialist", "Expert"),
+            WorkContext = new(Guid.NewGuid(), state.WorkstreamId!.Value, state.TeamId, null, null, null, null, sessionId, null, null) };
+        var resumes = 0;
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead,
+                (_, _) => Task.FromResult(session))
+            .RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume,
+                (_, _) => { resumes++; return Task.FromResult(session with { Status = "Active" }); })
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (_, _) => Task.FromResult(new AgentOperatingStateReadResponse(null)))
+            .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
+                (r, _) => Task.FromResult(new AgentOperatingStateResponse(Guid.NewGuid(), r.StateKey, r.SchemaId, r.SchemaVersion, r.Status,
+                    r.SourceRevisions, r.ConditionCodes, r.DecisionFingerprint, r.OpenCommitmentCorrelations, r.AttentionReviewId, r.Payload, 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+        var agent = new VideoGameDirectorAgent(); var context = runtime.CreateContext();
+        var resumed = await agent.ReconcileRequirementReviewAsync(state, 1, Guid.NewGuid(), installation, [], null, context, default);
+        Assert.True(resumed.Stop); Assert.Equal(1, resumes);
+        var unchanged = await agent.ReconcileRequirementReviewAsync(resumed.State, resumed.Revision, Guid.NewGuid(), installation, [], null, context, default);
+        Assert.False(unchanged.Stop); Assert.Equal(1, resumes);
+        await agent.ReconcileRequirementReviewAsync(resumed.State, resumed.Revision, Guid.NewGuid(), Guid.NewGuid(), [], null, context, default);
+        Assert.Equal(2, resumes);
+        var answered = JsonSerializer.Deserialize<DecisionRecord>("{}")! with { Status = "Decided", Id = Guid.NewGuid(), Revision = 2 };
+        Assert.True((await agent.ReconcileRequirementReviewAsync(state, 1, Guid.NewGuid(), installation, [], answered, context, default)).Stop);
+        Assert.Equal(2, resumes);
+    }
 
     private static AgentTestRuntime RosterRuntime(GameDirectorOperatingState state, IReadOnlyList<AgentTeammate> members, bool wrongTeam = false) =>
         new AgentTestRuntime().RegisterCapability<TeamRosterV2Request, TeamRosterV2Response>(PlatformCapabilities.TeamRosterReadV2,
