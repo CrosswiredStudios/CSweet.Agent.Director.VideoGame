@@ -22,12 +22,12 @@ public sealed partial class VideoGameDirectorAgent
     {
         if (state.ToolchainFeasibilityEvidence is not { } evidence || state.ToolchainFeasibilitySessionId is not Guid sessionId)
             return (state, revision, false);
-        if (evidence.RecipeKey != DetermineRequiredRecipe(state)) return (state, revision, false);
+        if (DetermineRequiredRecipe(state) is { } locked && evidence.RecipeKey != locked) return (state, revision, false);
         var basis = RequirementReviewBasis(state, reviewerInstallation, catalog, decision);
         if (decision is { Status: DecisionStatuses.Decided } && RequirementDecisions.IsGrounded(decision))
         {
             var follow = await RequirementDecisions.FollowThroughAsync(decision, state.AcceptedVision!.Markdown,
-                JsonSerializer.SerializeToElement(new { evidence, catalog = catalog.Select(x => ToolchainReviewContext.Describe(x, evidence.RecipeKey)) }),
+                JsonSerializer.SerializeToElement(new { evidence, catalog = catalog.Where(x => x.Definition.Recipes.Any(r => r.Key == evidence.RecipeKey)).Select(x => ToolchainReviewContext.Describe(x, evidence.RecipeKey)) }),
                 context, new(Settings.GetGuid("llmProviderId") ?? throw new InvalidOperationException("Configure the Director's provider."), Settings.GetString("llmModel")), null, ct);
             if (follow.HoldAffectedWork) return (state, revision, true);
         }

@@ -281,7 +281,7 @@ public sealed class GameDirectorLifecycleTests
         Assert.Equal("latest Phaser", VideoGameDirectorAgent.PreferredEngineLabel(
             preferences with { EnginePreferences = ["JavaScript", "latest Phaser"] }));
         Assert.Contains(firstMessageId, preferences.SupportingMessageIds);
-        Assert.Equal(VideoGameToolchainRecipeKeys.PhaserWeb2D,
+        Assert.Null(
             VideoGameDirectorAgent.DetermineRequiredRecipe(new GameDirectorOperatingState
             {
                 ManagerPreferences = preferences
@@ -432,53 +432,14 @@ public sealed class GameDirectorLifecycleTests
     }
 
     [Theory]
-    [InlineData("web browser Phaser 2D", VideoGameToolchainRecipeKeys.PhaserWeb2D)]
-    [InlineData("web browser Babylon 3D", VideoGameToolchainRecipeKeys.BabylonWeb3D)]
-    [InlineData("Windows native Godot 2D", VideoGameToolchainRecipeKeys.GodotNative2DGdscript)]
-    [InlineData("Linux native Godot 3D", VideoGameToolchainRecipeKeys.GodotNative3DGdscript)]
-    public void ToolchainRecipesFollowLockedTargetAndDimensionalityRules(string direction, string expected)
+    [InlineData("2D web browser")]
+    [InlineData("3D game for desktop")]
+    public void Director_leaves_game_complexity_and_engine_selection_to_technical_review(string pitch)
     {
-        var state = new GameDirectorOperatingState
-        {
-            ManagerPreferences = new ManagerPreferenceProfile { PlatformConstraints = [direction] }
-        };
-
-        Assert.Equal(expected, VideoGameDirectorAgent.DetermineRequiredRecipe(state));
-    }
-
-    [Theory]
-    [InlineData("- **Non-goals:** Mobile, VR, multiplayer, 3D, procedural level generation.\n**Recommended engine/asset strategy:** Phaser (latest major) for 2D web rendering.")]
-    [InlineData("## Non-goals\n### Graphics\n- 3D gameplay\n## Delivery\nA browser game.")]
-    [InlineData("Top-down 2D web game. Phaser 3. No 3D or native builds.")]
-    [InlineData("2D web game with 3D-like light effects, but without 3D gameplay.")]
-    public void NegativeThreeDimensionalLanguageDoesNotSelectBabylon(string pitch)
-    {
-        var state = new GameDirectorOperatingState
-        {
-            AcceptedVision = new AcceptedGameVision(1, "digest", pitch, Guid.NewGuid(), Guid.NewGuid(),
-                "hash", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow)
-        };
-
-        Assert.Equal(VideoGameToolchainRecipeKeys.PhaserWeb2D,
-            VideoGameDirectorAgent.DetermineRequiredRecipe(state));
-    }
-
-    [Fact]
-    public void ExplicitPhaserOutranksContradictoryPitchLanguage()
-    {
-        var state = new GameDirectorOperatingState
-        {
-            ManagerPreferences = new ManagerPreferenceProfile { EnginePreferences = ["latest Phaser"] },
-            AcceptedVision = new AcceptedGameVision(1, "digest", "A 3D web game using Babylon.",
-                Guid.NewGuid(), Guid.NewGuid(), "hash", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-                DateTimeOffset.UtcNow)
-        };
-
-        Assert.Equal(VideoGameToolchainRecipeKeys.PhaserWeb2D,
-            VideoGameDirectorAgent.DetermineRequiredRecipe(state));
-        Assert.Contains("latest Phaser", VideoGameDirectorAgent.SystemPrompt);
-        Assert.Contains("Chromium-only", VideoGameDirectorAgent.SystemPrompt);
-        Assert.Contains("Preserve an explicit owner requirement", VideoGameDirectorAgent.SystemPrompt);
+        var state = new GameDirectorOperatingState { ManagerPreferences = new() { PlatformConstraints = [pitch] } };
+        Assert.Null(VideoGameDirectorAgent.DetermineRequiredRecipe(state));
+        var selected = state with { ToolchainSelectionDecisionId = Guid.NewGuid(), SelectedToolchainRecipeKey = "third-party.recipe" };
+        Assert.Equal("third-party.recipe", VideoGameDirectorAgent.DetermineRequiredRecipe(selected));
     }
 
     [Theory]
@@ -500,11 +461,11 @@ public sealed class GameDirectorLifecycleTests
         var scenarios = new[]
         {
             Scenario("Phaser microgame", "web browser Phaser 2D", VideoGameAssetProductionModes.Procedural,
-                VideoGameToolchainRecipeKeys.PhaserWeb2D, ["web"], 25_000m),
+                "phaser.web-2d.v1", ["web"], 25_000m),
             Scenario("Babylon microgame", "web browser Babylon 3D", VideoGameAssetProductionModes.Hybrid,
-                VideoGameToolchainRecipeKeys.BabylonWeb3D, ["web"], 35_000m),
+                "babylon.web-3d.v1", ["web"], 35_000m),
             Scenario("Godot puzzle", "Windows Linux native Godot 3D", VideoGameAssetProductionModes.Provided,
-                VideoGameToolchainRecipeKeys.GodotNative3DGdscript, ["windows-x64", "linux-x64"], 50_000m)
+                "godot.native-3d.gdscript.v1", ["windows-x64", "linux-x64"], 50_000m)
         };
 
         Assert.Equal(3, scenarios.Select(x => x.WorkstreamId).Distinct().Count());
@@ -515,8 +476,7 @@ public sealed class GameDirectorLifecycleTests
         Assert.Equal(3, scenarios.Select(x => x.Budget).Distinct().Count());
         Assert.All(scenarios, scenario =>
         {
-            Assert.Equal(scenario.ExpectedRecipe,
-                VideoGameDirectorAgent.DetermineRequiredRecipe(scenario.State));
+            Assert.Null(VideoGameDirectorAgent.DetermineRequiredRecipe(scenario.State));
             Assert.Equal(2, VideoGameDirectorAgent.BuildRequiredStudioRoles(Guid.NewGuid())
                 .Select(x => x.RoleKey).Distinct(StringComparer.Ordinal).Count());
         });

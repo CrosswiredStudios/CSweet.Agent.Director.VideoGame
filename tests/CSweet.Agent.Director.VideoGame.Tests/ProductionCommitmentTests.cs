@@ -28,7 +28,7 @@ public sealed class ProductionCommitmentTests
             { WorkContext = new(Guid.NewGuid(), state.WorkstreamId!.Value, state.TeamId, null, null, null, null, id, null, "video-game-production.v2") };
         var configuration = JsonSerializer.SerializeToElement(new { });
         var definition = new ToolchainAdapterDefinition(Guid.NewGuid(), "node-typescript.v1", 1, "Node", "pkg", "1", hash,
-            [], configuration, configuration, [], [], now);
+            [new("alternative.recipe", ["build"], ["web"], configuration, [], [])], configuration, configuration, [], [], now);
         var adapter = new EligibleToolchainAdapter(definition, new(definition.Id, Guid.NewGuid(), Guid.NewGuid(), "node-24",
             "refreshed-image", now, now.AddDays(1), true));
         var runtime = new AgentTestRuntime().RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
@@ -41,7 +41,8 @@ public sealed class ProductionCommitmentTests
             return;
         }
         Assert.Equal("Continue", result.Disposition);
-        Assert.Equal("phaser.web-2d.v1", result.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Null(result.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Equal("alternative.recipe", Assert.Single(result.Artifact.Payload.GetProperty("offeredRecipeKeys").EnumerateArray()).GetString());
         Assert.Equal("refreshed-image", result.Artifact.Payload.GetProperty("eligibleDefinitions")[0].GetProperty("EnvironmentImageDigest").GetString());
         var attachment = Assert.Single(result.Artifact.Payload.GetProperty("documentReferences").EnumerateArray());
         Assert.Equal(state.AcceptedVision!.ArtifactRevisionId, attachment.GetProperty("revisionId").GetGuid());
@@ -78,7 +79,7 @@ public sealed class ProductionCommitmentTests
         var runtime = RosterRuntime(state, [technicalMember]);
         var empty = JsonSerializer.SerializeToElement(new {});
         var definition = new ToolchainAdapterDefinition(Guid.NewGuid(), "node-typescript.v1", 1, "Node", "pkg", "1", "hash",
-            [], empty, empty, [], [], now);
+            [new(currentRecipe, ["build"], ["web"], empty, [], [])], empty, empty, [], [], now);
         var provider = new EligibleToolchainAdapter(definition, new(definition.Id, Guid.NewGuid(), Guid.NewGuid(), "node",
             "image", now, now.AddDays(1), true));
         var tech = new AgentCoordinationParticipant(victor, Guid.NewGuid(), "Victor", "Technical Director");
@@ -126,7 +127,8 @@ public sealed class ProductionCommitmentTests
             { WorkContext = session.WorkContext };
         var redirect = await agent.HandleCoordinationTurnAsync(turn, context, default);
         Assert.Equal("Continue", redirect.Disposition);
-        Assert.Equal(currentRecipe, redirect.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Null(redirect.Artifact!.Payload.GetProperty("requiredRecipeKey").GetString());
+        Assert.Equal(currentRecipe, Assert.Single(redirect.Artifact.Payload.GetProperty("offeredRecipeKeys").EnumerateArray()).GetString());
         Assert.Empty(decisions);
         var corrected = state with { ToolchainFeasibilityEvidence = oldEvidence with { RecipeKey = currentRecipe, Feasible = feasible,
             Findings = [feasible ? "Phaser is supported" : "Unresolved dependency"] } };
@@ -183,13 +185,13 @@ public sealed class ProductionCommitmentTests
     {
         var assets = VideoGameDirectorAgent.BuildAssetStrategyQuestion();
         var build = VideoGameDirectorAgent.BuildUnavailableToolchainQuestion(
-            CSweet.Agent.SDK.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D);
+            "phaser.web-2d.v1");
 
         Assert.Contains("visual and audio assets", assets);
         Assert.DoesNotContain("{", assets);
-        Assert.Contains("Phaser 2D web", build);
-        Assert.Contains("Node/TypeScript build runner", build);
-        Assert.Contains("not a request to change engines", build);
+        Assert.Contains("phaser.web-2d.v1", build);
+        Assert.Contains("compatible build runner", build);
+        Assert.Contains("Planning can continue", build);
     }
 
     [Fact]
@@ -222,8 +224,7 @@ public sealed class ProductionCommitmentTests
             .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(
                 PlatformCapabilities.ToolchainCatalogRead, (request, _) =>
                 {
-                    Assert.Equal(CSweet.Agent.SDK.VideoGame.Contracts.VideoGameToolchainRecipeKeys.PhaserWeb2D,
-                        request.RecipeKey);
+                    Assert.Null(request.RecipeKey);
                     return Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]);
                 })
             .RegisterCapability<DecisionRequest, DecisionRecord>(DecisionCapabilityNames.RequestV1,

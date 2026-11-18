@@ -26,7 +26,7 @@ public sealed partial class VideoGameDirectorAgent
             if (review.WorkContext?.WorkstreamId != project || review.Initiator.OrganizationUserId.ToString() != context.Identity?.EmployeeId) return;
             var required = state.ToolchainBlockerDecisionId.HasValue || review.Status is AgentCoordinationStatuses.Failed or AgentCoordinationStatuses.Blocked;
             var verified = state.ToolchainFeasibilityEvidence is { Feasible: true } evidence && evidence.AcceptedVisionDigest == vision.Digest &&
-                evidence.RecipeKey == DetermineRequiredRecipe(state) && !ToolchainTargets(evidence.RecipeKey).Except(evidence.TargetKeys).Any();
+                evidence.RecipeKey == DetermineRequiredRecipe(state) && !ToolchainTargets(state).Except(evidence.TargetKeys).Any();
             var selection = state.ToolchainSelectionDecisionId is Guid selectionId ?
                 (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(selectionId), ct)).SingleOrDefault() : null;
             var resolved = verified && selection is { Status: DecisionStatuses.Decided } && !state.ToolchainBlockerDecisionId.HasValue;

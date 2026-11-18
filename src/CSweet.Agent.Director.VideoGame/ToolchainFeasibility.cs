@@ -27,16 +27,32 @@ public sealed partial class VideoGameDirectorAgent
         return string.Join('\n', lines);
     }
 
-    private static string[] ToolchainTargets(string recipe) =>
-        recipe.StartsWith("godot.", StringComparison.Ordinal) ? ["windows-x64", "linux-x64"] : ["web"];
+    private static string[] ToolchainTargets(GameDirectorOperatingState state)
+    {
+        var text = string.Join(" ", state.ManagerPreferences.PlatformConstraints.Append(InScopeToolchainText(state.AcceptedVision?.Markdown ?? "")));
+        var targets = new List<string>();
+        if (HasAffirmativeMention(text, @"\b(?:web|browser|chromium)\b")) targets.Add("web");
+        return targets.ToArray();
+    }
 
-    private static ReadToolchainCatalogV2Request FeasibilityCatalogRequest(string recipe, string[] targets) =>
+    private static bool OfferedRecipe(JsonElement offer, ToolchainFeasibilityEvidenceV1 evidence)
+    {
+        if (offer.TryGetProperty("targetKeys", out var targets) && targets.ValueKind == JsonValueKind.Array &&
+            targets.EnumerateArray().Any(x => !evidence.TargetKeys.Contains(x.GetString()))) return false;
+        if (offer.TryGetProperty("requiredRecipeKey", out var required) && required.ValueKind == JsonValueKind.String)
+            return required.GetString() == evidence.RecipeKey;
+        return offer.TryGetProperty("offeredRecipeKeys", out var offered) && offered.ValueKind == JsonValueKind.Array &&
+            offered.EnumerateArray().Any(x => x.GetString() == evidence.RecipeKey);
+    }
+
+    private static ReadToolchainCatalogV2Request FeasibilityCatalogRequest(string? recipe, string[] targets) =>
         new(VideoGameProfileKeys.ProductionV2, recipe, targets, ["scaffold", "import", "build", "test", "run", "capture", "package"]);
 
     private static AgentCoordinationArtifactSubmission FeasibilityRequestWithPitch(AcceptedGameVision pitch,
-        string recipe, string[] targets, IReadOnlyList<EligibleToolchainAdapter> catalog) =>
+        string? recipe, string[] targets, IReadOnlyList<EligibleToolchainAdapter> catalog) =>
         CollaborationActions.WithDocuments(new(ToolchainFeasibilityRequestType, "1.0", pitch.Digest, 1, true,
             JsonSerializer.SerializeToElement(new { acceptedVisionDigest = pitch.Digest, requiredRecipeKey = recipe,
+                offeredRecipeKeys = catalog.SelectMany(x => x.Definition.Recipes).Where(r => targets.All(r.TargetKeys.Contains)).Select(r => r.Key).Distinct().Order(StringComparer.Ordinal),
                 targetKeys = targets, eligibleDefinitions = catalog.Select(x => new { x.Definition.Id, x.Definition.Key,
                     x.Definition.Version, x.Definition.DefinitionDigest, x.Eligibility.ProviderInstallationId,
                     x.Eligibility.EnvironmentProfileKey, x.Eligibility.EnvironmentImageDigest, x.Eligibility.ExpiresAt }) })),
@@ -67,7 +83,7 @@ public sealed partial class VideoGameDirectorAgent
         GameDirectorOperatingState state, AcceptedGameVision pitch, AgentRuntimeContext context, CancellationToken token)
     {
         var recipe = DetermineRequiredRecipe(state);
-        var targets = ToolchainTargets(recipe);
+        var targets = ToolchainTargets(state);
         var catalog = await context.Platform.ReadEligibleToolchainsAsync(FeasibilityCatalogRequest(recipe, targets), token);
         if (catalog.Count == 0)
             return AgentCoordinationTurnResult.Blocked($"Build capacity for {recipe} is currently unavailable. Retry the review once a certified environment is available.");
@@ -76,7 +92,7 @@ public sealed partial class VideoGameDirectorAgent
             FeasibilityRequestWithPitch(pitch, recipe, targets, catalog));
     }
 
-    internal static Guid? SupersededRecipeBlocker(GameDirectorOperatingState state, DecisionRecord? prior, string recipe)
+    internal static Guid? SupersededRecipeBlocker(GameDirectorOperatingState state, DecisionRecord? prior, string? recipe)
     {
         if (state.AcceptedVision is not { } pitch || prior is not { Status: DecisionStatuses.Pending,
                 AuthorityRuleKey: "technical-feasibility-blocker", TypeKey: VideoGameDecisionTypeKeys.ToolchainSelection } ||
@@ -91,8 +107,8 @@ public sealed partial class VideoGameDirectorAgent
                 ? prior.Summary[prefix.Length..end] : null;
         var verified = state.ToolchainFeasibilityEvidence is { Feasible: true } evidence &&
             evidence.AcceptedVisionDigest == pitch.Digest && evidence.RecipeKey == recipe &&
-            !ToolchainTargets(recipe).Except(evidence.TargetKeys, StringComparer.Ordinal).Any();
-        return !string.IsNullOrWhiteSpace(old) && (old != recipe || verified) ? prior.Id : null;
+            !ToolchainTargets(state).Except(evidence.TargetKeys, StringComparer.Ordinal).Any();
+        return !string.IsNullOrWhiteSpace(old) && (recipe is not null && old != recipe || verified) ? prior.Id : null;
     }
 
     private static IReadOnlyList<EvidenceReference> FeasibilitySources(ToolchainFeasibilityEvidenceV1 assessment,

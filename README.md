@@ -1,4 +1,4 @@
-# Director 0.14.3
+# Director 0.15.0
 
 Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.42.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
 

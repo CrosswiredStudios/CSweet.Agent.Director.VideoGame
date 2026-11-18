@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.14.3";
+    public override string Version => "0.15.0";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -515,14 +515,18 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             // evidence to the specialist instead of recording the old rejection again.
             if (!request.IsFinalization && evidence is not null && !current.State.ToolchainSelectionDecisionId.HasValue &&
                 evidence.AcceptedVisionDigest == feasibilityVision.Digest &&
-                (!evidence.Feasible || evidence.RecipeKey != DetermineRequiredRecipe(current.State)) &&
+                !evidence.Feasible &&
                 request.Transcript.LastOrDefault(t => t.Artifact?.Type == ToolchainFeasibilityRequestType) is { } earlier &&
                 earlier.SpeakerOrganizationUserId == request.Self.OrganizationUserId && earlier.Artifact!.Key == feasibilityVision.Digest &&
-                earlier.Artifact.Payload.TryGetProperty("requiredRecipeKey", out var asked) && asked.GetString() == evidence.RecipeKey)
+                OfferedRecipe(earlier.Artifact.Payload, evidence))
                 return await RequestCurrentRecipeReviewAsync(request, current.State, feasibilityVision, context, cancellationToken);
             if (evidence is null ||
                 evidence.Findings is not { Count: > 0 } || evidence.EvidenceResourceIds is not { Count: > 0 } ||
-                evidence.TargetKeys is not { Count: > 0 } || evidence.RecipeKey != DetermineRequiredRecipe(current.State) ||
+                evidence.TargetKeys is not { Count: > 0 } ||
+                request.Transcript.LastOrDefault(t => t.Artifact?.Type == ToolchainFeasibilityRequestType) is not { } offer ||
+                offer.SpeakerOrganizationUserId != request.Self.OrganizationUserId || offer.Artifact!.Key != feasibilityVision.Digest ||
+                !OfferedRecipe(offer.Artifact.Payload, evidence) ||
+                current.State.SelectedToolchainRecipeKey is { } locked && locked != evidence.RecipeKey ||
                 !string.Equals(evidence.AcceptedVisionDigest, feasibilityVision.Digest, StringComparison.OrdinalIgnoreCase))
                 return AgentCoordinationTurnResult.Blocked(
                     "The Technical Director evidence does not bind to the exact accepted vision digest. Reassess the assigned recipe against the exact project evidence.");
@@ -1043,20 +1047,17 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
 
     internal static string? PitchEngineConflict(ManagerPreferenceProfile preferences, string pitch)
     {
-        var engine = preferences.EnginePreferences.LastOrDefault(x =>
-            HasAffirmativeMention(x, @"\b(?:phaser|babylon(?:\.js)?)\b"));
-        if (engine is null) return null;
-        var phaser = HasAffirmativeMention(engine, @"\bphaser\b");
-        var requested = phaser ? "Phaser" : "Babylon.js";
-        var other = phaser ? @"\bbabylon(?:\.js)?\b" : @"\bphaser\b";
-        var constraintText = PitchConstraintText(pitch);
-        if (!HasAffirmativeMention(constraintText, phaser ? @"\bphaser\b" : @"\bbabylon(?:\.js)?\b") ||
-            HasAffirmativeMention(constraintText, other))
-            return $"The manager explicitly chose {requested}; do not omit it or substitute another engine.";
-        if (phaser && Regex.IsMatch(engine, @"(?i)\blatest\s+phaser\b") &&
-            Regex.IsMatch(constraintText, @"(?i)\bphaser\s+v?\d+(?:\.\d+)*\b"))
-            return "The manager asked for the latest Phaser. Do not pin a major or package version before Technical Director compatibility validation.";
-        return null;
+        var choice = PreferredEngineLabel(preferences);
+        if (string.IsNullOrWhiteSpace(choice) || choice.Equals("no preference", StringComparison.OrdinalIgnoreCase)) return null;
+        var latest = choice.StartsWith("latest ", StringComparison.OrdinalIgnoreCase);
+        var requested = latest ? choice[7..].Trim() : choice;
+        var text = PitchConstraintText(pitch);
+        var pattern = @"(?<![\w.])" + Regex.Escape(requested) + @"(?![\w.]\w)";
+        if (!HasAffirmativeMention(text, pattern) || latest && Regex.IsMatch(text, pattern + @"\s+v?\d", RegexOptions.IgnoreCase))
+            return $"Preserve the owner's explicit engine constraint '{choice}' in the pitch.";
+        var conflicting = Regex.Matches(text, @"(?im)(?:^\s*engine:\s*|\buse\s+)(?<engine>[A-Z][\w.-]*)(?=\s+instead|\s*[.]?\s*$)", RegexOptions.None);
+        return conflicting.Any(m => !requested.StartsWith(m.Groups["engine"].Value.TrimEnd('.'), StringComparison.OrdinalIgnoreCase)) ?
+            $"Reconcile the conflicting engine direction with '{choice}'." : null;
     }
 
     private static string PitchConstraintText(string pitch)
@@ -1933,7 +1934,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var workstreamId = state.WorkstreamId.Value;
         var acceptedVision = state.AcceptedVision;
         var recipe = DetermineRequiredRecipe(state);
-        var targets = ToolchainTargets(recipe);
+        var targets = ToolchainTargets(state);
         // Staffing and brief refinement continue before the Technical Director can assess
         // build requirements. Do not escalate runner capacity to the manager prematurely.
         if (state.TeamId is not { } teamId) return (state, revision, false);
@@ -1952,19 +1953,20 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             .Append(new KeyValuePair<string, Guid>(VideoGameRoleKeys.TechnicalDirector, technicalDirectorId))
             .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal) };
         var catalog = await context.Platform.ReadEligibleToolchainsAsync(FeasibilityCatalogRequest(recipe, targets), cancellationToken);
-        if (catalog.Count == 0 && recipe is "phaser.web-2d.v1" or "babylon.web-3d.v1")
+        if (catalog.Count == 0 && targets.Contains("web"))
         {
+            var capacityProfile = recipe ?? "node-typescript.v1";
             var resources = await context.Platform.Resources.ReadAsync(new(WorkstreamId: workstreamId), cancellationToken);
-            if (!resources.Any(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == recipe))
+            if (!resources.Any(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == capacityProfile))
             {
-                var need = new ResourceRequest(workstreamId, ResourceCapabilities.BuildToolchain, recipe,
-                    "Provide the approved game's build, browser validation and packaging capability.", $"build-capacity:{workstreamId:N}:{recipe}");
+                var need = new ResourceRequest(workstreamId, ResourceCapabilities.BuildToolchain, capacityProfile,
+                    "Provide the approved game's build, browser validation and packaging capability.", $"build-capacity:{workstreamId:N}:{capacityProfile}");
                 var handoff = await context.Platform.Communication.StartCoordinationAsync(new StartAgentCoordinationRequest(technicalDirectorId,
                     "Request project build capacity", "Request the approved project's required build capacity through current-manager approval.",
                     ["Return the durable resource request identity; approval and verification continue asynchronously."],
                     "Prepare the resource request. Do not claim installation or readiness merely because it was requested.",
                     acceptedVision.ConversationId, acceptedVision.ChatTurnId, acceptedVision.MessageId,
-                    $"resource-handoff:{workstreamId:N}:{recipe}", new("platform.resource.requirement.v1", "1.0", acceptedVision.Digest, 1, true,
+                    $"resource-handoff:{workstreamId:N}:{capacityProfile}", new("platform.resource.requirement.v1", "1.0", acceptedVision.Digest, 1, true,
                         JsonSerializer.SerializeToElement(need))) { WorkContext = ProjectWorkContext(state, context, workstreamId) }, cancellationToken);
                 await QueueHandoffCardAsync(state, handoff, acceptedVision,
                     "Get build capacity requested by the Technical Director",
@@ -1982,7 +1984,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                         throw new InvalidOperationException($"Build-capacity handoff recovery needs attention: {resumed.FinalSummary}");
                 }
             }
-            var currentResource = resources.FirstOrDefault(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == recipe);
+            var currentResource = resources.FirstOrDefault(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == capacityProfile);
             if (currentResource is not null && state.ToolchainBlockerDecisionId is { } oldId)
             {
                 var oldDecision = (await context.Platform.ReadDecisionsAsync(new ReadDecisionRequest(oldId), cancellationToken)).SingleOrDefault();
@@ -1996,7 +1998,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             if (currentResource?.Status is "WaitingDependency" or "Failed" or "NeedsAttention" or "Revoked" or "Rejected" or "RevisionRequested")
                 throw new InvalidOperationException($"Build-capacity request {currentResource.Id:D} is {currentResource.Status}: {currentResource.Condition} See project resource setup for the current dependency and recovery state.");
             await context.ReportProgressAsync(new { stage = "resource-fulfillment", projectId = workstreamId,
-                status = resources.FirstOrDefault(x => x.ProfileKey == recipe)?.Status ?? "Requested", recipe }, cancellationToken);
+                status = resources.FirstOrDefault(x => x.ProfileKey == capacityProfile)?.Status ?? "Requested", recipe }, cancellationToken);
             return (state, revision, false);
         }
         if (catalog.Count == 0)
@@ -2038,20 +2040,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             technical.AgentInstallationId!.Value, catalog, priorBlocker, context, cancellationToken);
         state = requirementReview.State; revision = requirementReview.Revision;
         if (requirementReview.Stop) return (state, revision, false);
-        var replaces = SupersededRecipeBlocker(state, priorBlocker, recipe);
-        if (state.ToolchainFeasibilityEvidence is { } previous && previous.RecipeKey != recipe &&
-            previous.AcceptedVisionDigest == acceptedVision.Digest && !state.ToolchainSelectionDecisionId.HasValue &&
-            state.ToolchainFeasibilitySessionId is { } retained)
-        {
-            if (blockerId.HasValue && replaces is null) return (state, revision, false);
-            var session = await context.Platform.Communication.ReadCoordinationAsync(retained, cancellationToken);
-            if (session.Status == "Blocked" && session.WorkContext?.WorkstreamId == workstreamId &&
-                session.WorkContext.TeamId == teamId && session.Target.OrganizationUserId == technicalDirectorId)
-                await context.Platform.Communication.ResumeCoordinationAsync(retained, session.Revision,
-                    $"Review the accepted pitch against {recipe}. The earlier assessment concerned {previous.RecipeKey}.",
-                    $"recipe-review:{retained:N}:{acceptedVision.Digest}:{recipe}", cancellationToken);
-            return (state, revision, false);
-        }
+        var replaces = SupersededRecipeBlocker(state, priorBlocker, recipe ?? state.ToolchainFeasibilityEvidence?.RecipeKey);
         if (state.ToolchainFeasibilityEvidence is null)
         {
             if (!state.ToolchainFeasibilitySessionId.HasValue)
@@ -2060,7 +2049,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
                     new StartAgentCoordinationRequest(
                         technicalDirectorId,
                         "Toolchain feasibility approval",
-                        $"Assess exact recipe `{recipe}` against the accepted vision, targets, performance budgets, dependencies, and certified Office capacity.",
+                        "Choose the technical approach on merit for the accepted game. Assess the certified recipes against its complexity, platforms, and performance needs.",
                         ["Return video-game.toolchain-feasibility.v1", "Bind the exact accepted vision digest and recipe key", "Name target keys, findings, and durable evidence resources", "Set feasible=false for any unresolved blocking risk"],
                         "Perform the Technical Director feasibility review before the Video Game Director records the final toolchain selection.",
                         acceptedVision.ConversationId,
@@ -2086,7 +2075,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var feasibility = state.ToolchainFeasibilityEvidence;
         if (!feasibility.Feasible ||
             !string.Equals(feasibility.AcceptedVisionDigest, acceptedVision.Digest, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(feasibility.RecipeKey, recipe, StringComparison.Ordinal) ||
+            !catalog.Any(x => x.Definition.Recipes.Any(r => r.Key == feasibility.RecipeKey && feasibility.TargetKeys.All(r.TargetKeys.Contains))) ||
             targets.Except(feasibility.TargetKeys, StringComparer.Ordinal).Any())
         {
             if (!blockerId.HasValue || replaces.HasValue || priorBlocker is { Status: DecisionStatuses.Pending } && !RequirementDecisions.IsGrounded(priorBlocker))
@@ -2103,7 +2092,9 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         {
             if (priorBlocker is { Status: DecisionStatuses.Decided, SelectedOptionId: "pause" or "change-target" })
                 return (state, revision, false);
-            var providers = catalog
+            recipe = feasibility.RecipeKey;
+            targets = feasibility.TargetKeys.ToArray();
+            var providers = catalog.Where(x => x.Definition.Recipes.Any(r => r.Key == recipe && targets.All(r.TargetKeys.Contains)))
                 .OrderByDescending(x => x.Eligibility.ExpiresAt)
                 .ThenBy(x => x.Definition.ProviderPackageId, StringComparer.Ordinal)
                 .ThenBy(x => x.Definition.DefinitionDigest, StringComparer.Ordinal)
@@ -2143,48 +2134,16 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         return (state, revision, string.Equals(state.SelectedToolchainRecipeKey, recipe, StringComparison.Ordinal));
     }
 
-    internal static string BuildUnavailableToolchainQuestion(string recipe)
-    {
-        var engine = recipe switch
-        {
-            VideoGameToolchainRecipeKeys.PhaserWeb2D => "Phaser 2D web",
-            VideoGameToolchainRecipeKeys.BabylonWeb3D => "Babylon.js 3D web",
-            VideoGameToolchainRecipeKeys.GodotNative2DGdscript => "Godot 2D native",
-            VideoGameToolchainRecipeKeys.GodotNative3DGdscript => "Godot 3D native",
-            _ => "approved"
-        };
-        var runner = recipe.StartsWith("godot.", StringComparison.Ordinal) ? "Godot" : "Node/TypeScript";
-        return $"Automated builds for the approved {engine} game are not ready: C-Sweet cannot find a certified {runner} build runner and managed Office image. This is build capacity, not a request to change engines. Planning may continue. Would you like to enable the build runner or keep build work paused?";
-    }
+    internal static string BuildUnavailableToolchainQuestion(string? recipe) =>
+        $"Automated builds need certified capacity for {recipe ?? "the accepted project targets"}. Planning can continue. Enable a compatible build runner or pause the affected builds?";
 
     internal static string? PreferredEngineLabel(ManagerPreferenceProfile preferences) =>
-        preferences.EnginePreferences.LastOrDefault(x =>
-            HasAffirmativeMention(x, @"\b(?:phaser|babylon(?:\.js)?|godot|unity|unreal)\b"))
-        ?? preferences.EnginePreferences.LastOrDefault();
+        preferences.EnginePreferences.LastOrDefault();
 
-    internal static string DetermineRequiredRecipe(GameDirectorOperatingState state)
-    {
-        if (state.ToolchainSelectionDecisionId.HasValue && state.SelectedToolchainRecipeKey is { Length: > 0 } selected)
-            return selected;
-        // The manager's explicit engine choice outranks incidental wording in a model-written pitch.
-        foreach (var preference in state.ManagerPreferences.EnginePreferences.Reverse())
-        {
-            if (HasAffirmativeMention(preference, @"\bphaser\b"))
-                return VideoGameToolchainRecipeKeys.PhaserWeb2D;
-            if (HasAffirmativeMention(preference, @"\bbabylon(?:\.js)?\b"))
-                return VideoGameToolchainRecipeKeys.BabylonWeb3D;
-        }
-        var text = string.Join(' ', state.ManagerPreferences.PlatformConstraints
-            .Concat(state.ManagerPreferences.EnginePreferences)
-            .Append(InScopeToolchainText(state.AcceptedVision?.Markdown ?? string.Empty)));
-        var web = HasAffirmativeMention(text, @"\b(?:web|browser|phaser|babylon(?:\.js)?)\b");
-        var threeDimensional = HasAffirmativeMention(text, @"\b(?:3D(?!-like)|three[- ]dimensional|babylon(?:\.js)?)\b");
-        if (web)
-            return threeDimensional ? VideoGameToolchainRecipeKeys.BabylonWeb3D : VideoGameToolchainRecipeKeys.PhaserWeb2D;
-        return threeDimensional
-            ? VideoGameToolchainRecipeKeys.GodotNative3DGdscript
-            : VideoGameToolchainRecipeKeys.GodotNative2DGdscript;
-    }
+    internal static string? DetermineRequiredRecipe(GameDirectorOperatingState state) =>
+        state.ToolchainSelectionDecisionId.HasValue ? state.SelectedToolchainRecipeKey :
+        state.ToolchainFeasibilityEvidence is { Feasible: true } evidence && evidence.AcceptedVisionDigest == state.AcceptedVision?.Digest
+            ? evidence.RecipeKey : null;
 
     private static bool HasAffirmativeMention(string text, string pattern) =>
         Regex.Matches(text, pattern, RegexOptions.IgnoreCase).Cast<Match>()
@@ -3201,22 +3160,10 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             current.PlatformConstraints,
             message,
             ["PC", "Steam", "Xbox", "PlayStation", "Nintendo Switch", "Switch", "mobile", "iOS", "Android", "VR", "web"]);
-        var engines = MergeKnownConstraints(
-            current.EnginePreferences,
-            message,
-            ["Godot", "Unity", "Unreal", "TypeScript", "JavaScript", "web engine", "custom engine", "no preference"]);
-        var webEngine = Regex.Matches(message, @"\b(?:phaser|babylon(?:\.js)?)\b", RegexOptions.IgnoreCase)
-            .Cast<Match>().LastOrDefault(match => !IsNegatedMention(message, match));
-        if (webEngine is not null)
-        {
-            var name = webEngine.Value.StartsWith("phaser", StringComparison.OrdinalIgnoreCase)
-                ? "Phaser" : "Babylon.js";
-            var latest = Regex.IsMatch(message[..webEngine.Index], @"(?i)\blatest(?:\s+stable)?\s+$");
-            var version = Regex.Match(message[(webEngine.Index + webEngine.Length)..], @"^\s+v?(?<number>\d+(?:\.\d+)*)\b");
-            var choice = latest ? $"latest {name}" : version.Success ? $"{name} {version.Groups["number"].Value}" : name;
-            engines = engines.Where(x => !ContainsConstraint(x, "Phaser") && !ContainsConstraint(x, "Babylon"))
-                .Append(choice).ToList();
-        }
+        var engines = current.EnginePreferences.ToList();
+        var direction = Regex.Match(message,
+            @"(?i)\b(?:engine\s*(?:to|is|:|=)\s*(?<choice>(?:latest\s+)?[\w.-]+(?:\s+v?\d+(?:\.\d+)*)?)|(?:using|use)\s+(?:the\s+)?(?<choice>(?:latest\s+)?[\w.-]+(?:\s+v?\d+(?:\.\d+)*)?)\s+engine\b)");
+        if (direction.Success) engines = [direction.Groups["choice"].Value.TrimEnd('.')];
         var genres = MergeKnownConstraints(
             current.GenreConstraints,
             message,
@@ -3716,10 +3663,10 @@ You own portfolio priorities, high-level concepts with the CEO, approved scope, 
 Prefer the platform's structured multiple-choice tool whenever manager input is needed. Never ask the manager an open-ended question in pitch, status, or answer prose. State the needed decision declaratively and let the runtime present 2–4 concrete, mutually exclusive options with one recommendation.
 Ground the pitch in the authoritative business profile, finance constraints, organization and team state, approved memory, and brokered references supplied in the prompt. Current authoritative platform state overrides memory.
 Delivery is forecast-driven. Capture explicit external date constraints and their reasons, budget/resource limits and reserved decisions up front; absent dates never block planning. Include these in business guardrails. Use completion forecasts after feasibility and estimates, never invented deadlines. Treat project-specific constraints as project-scoped; only explicitly standing preferences apply to future projects. Planning approval is not a production, spending or release lock. You own pausing affected work, durable escalation and relaying authoritative answers to the Producer.
-Preserve the manager's explicit engine and platform choice as a hard constraint. If the manager asks for the latest Phaser, do not silently pin an older major release or substitute Babylon; leave the exact compatible package version for Technical Director validation. A non-goal such as "no 3D" is not a 3D requirement. Surface genuine technical conflicts as open decisions rather than changing the approved game direction.
+Preserve the manager's explicit engine and platform choice as a hard constraint. Keep explicitly requested versions subject to the Technical Director's compatibility review. A non-goal such as "no 3D" is not a 3D requirement. Surface genuine technical conflicts as open decisions rather than changing the approved game direction.
 For web games, suggest Chromium-only browser verification in the pitch, success criteria and handoff. Do not invent a cross-browser matrix or require Firefox, Safari, Edge, iOS Safari, Android Chrome or real-device certification. Responsive design and mobile-style input remain product requirements when requested and can be checked in Chromium; emulation does not certify a real device. Preserve an explicit owner requirement for another browser and raise the actual scope decision rather than silently waiving accepted requirements.
 Every official pitch requires the CEO to approve its exact revision, even in Delegated mode. After approval, propose the missing shared Creative Director and Producer together, both reporting to you. Reuse those leaders across games. The Producer proposes technical leadership and a lean delivery team justified by accepted scope, explicit backlog work, capabilities, and workload. Collaborate on creative questions while hiring continues. Do not require all catalog disciplines or block unrelated planning on missing specialists. The Producer is the operational lead. You supervise the Workstream without ordinary team membership. Never let one required role silently absorb another.
-Record an explicit durable asset-strategy decision for every project. Select Phaser only for 2D web games, Babylon.js only for 3D web games, and Godot for 2D or 3D native games. Select only eligible certified adapter definitions and require exact Technical Director feasibility evidence first.
+Record an explicit durable asset-strategy decision for every project. Leave engine, language and library selection to the Technical Director. Capture explicit owner constraints and game complexity without specifying a default engine. Select only eligible certified adapter definitions and require exact Technical Director feasibility evidence first.
 
 Produce one executive-readable game pitch in Markdown containing every heading below:
 Keep the entire pitch under 650 words, use concise bullets, and return only the pitch without hidden reasoning or process narration.
