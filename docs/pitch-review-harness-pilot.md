@@ -1,19 +1,34 @@
 # Director pitch-review harness pilot
 
-The second agent repository ran a real Producer-to-Director pitch-review turn against the packed `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.41.0. Both packages restored byte-for-byte from the local feed into a fresh cache. The only project reference resolved by the test project was the Director itself. Headquarters and model endpoints were unnecessary.
+The Director runs a Producer pitch review through the packed `CSweet.Agent.Testing` host using scripted model and platform responses. The repeat used Director `0.14.2` with the pilot applied, SDK and harness `5.42.0`, a standalone Git clone, and a fresh NuGet cache. Both restored packages matched the local feed byte-for-byte. The test project's only project reference was the Director.
 
-| Adoption measure | Target | Observed |
-|---|---|---|
-| Time from starting repository inspection to both cases passing | ≤30 min | 4 min 50 s, including worktree creation, package wiring, restore and first build |
-| New or edited nonblank setup lines, including fixture helpers | ≤30 | 45 at first green (29 in the test, 16 in the fixture). Final version used 69 (30 and 39). |
-| Warm edit through incremental build and both verdicts | p95 ≤15 s | p95 6.81 s, median 2.68 s across 20 edits |
+| Adoption measure | Target | Original pilot | With shared operating state |
+|---|---|---|---|
+| Time from repository inspection to first passing cases | ≤30 min | 4 min 50 s | Existing test refitted. New-author time measured only on the original pilot. |
+| Added or replaced nonblank setup lines | ≤30 | 45 at first green. Final fixture used 69 (30 scenario + 39 fixture). | 52 (30 scenario + 22 fixture), 17 fewer. One additional line updates a pre-existing test outside the original counting rule. |
+| Warm edit through build and both verdicts | p95 ≤15 s | 6.81 s p95, 2.68 s median | 3.18 s p95, 2.90 s median |
 
-The pilot reuses the Director’s existing audio-licensing scenario. Given the exact Producer brief, the Director runs its scripted production-baseline review, creates one pending owner decision bound to the session, Producer, pitch, document revision and hash, and submits a blocked turn referencing that decision. With only the submitted hash changed, it blocks before inference and creates zero decisions. Removing the revision-hash check in a scratch copy made only the stale case fail. Restoring it made both pass. [Pitch-review tests](../tests/CSweet.Agent.Director.VideoGame.Tests/PitchEscalationTests.cs)
+The setup budget is still exceeded by 22 lines. The scenario still registers the named model response, captures the submitted coordination answer, and configures provider and model settings. The Director owns the pitch, project, evidence and decision assertions. [Pitch-review tests](../tests/CSweet.Agent.Director.VideoGame.Tests/PitchEscalationTests.cs)
 
-## How the pilot was measured
+## What the two cases prove
 
-- One Codex author familiar with the harness worked from Director commit `aad24bc` and the previously packed SDK. The original escalation fixture supplied 53 nonblank lines of existing test infrastructure. A first-time human maintainer's onboarding time remains unmeasured.
-- The setup count uses added or replaced nonblank C# lines from the scenario arrangements through configuring the agent, plus all added or replaced nonblank lines in the shared fixture. It includes braces and fixture validation. The actual delivery, outcome assertions, package wiring and documentation are outside that count. The final fixture checks document identity, reads state by exact key, and persists the scripted review. There are zero new seed files. The serialized Producer review was 545 bytes inside a 1,891-byte coordination request in the measured sample.
-- Warm runs used .NET SDK 10.0.401 on `DESKTOP-1LDJV2J`. In a standalone scratch copy, each run alternated the wording of the stale-brief diagnostic, built incrementally, then executed `dotnet test -c Release --no-restore --filter Category=AgentHarness`. Time includes the build, test process and result file. The p95 is the 19th sorted observation of 20.
+Given the exact Producer brief, the Director runs its scripted production-baseline review, persists the review under its session and turn key, and creates one pending owner decision about audio licensing. The decision is bound to the Producer, session, pitch digest, document revision and hash. The SDK submits a blocked reply referencing that decision with the expected turn revision and idempotency key. Changing only the submitted hash blocks the turn before inference, with no saved review or owner decision. Removing the hash check from a disposable checkout made only the stale case fail. Restoring it made both pass.
 
-The setup budget was already exceeded on the first passing run. The first shared fixture worth extracting is a store for keyed operating-state reads and writes. Scripting a named model response and collecting the SDK's submitted turn are the next places to reduce repeated setup. Keep the pitch, project and revision assertions in the Director test.
+`OperatingStateFixture` replaces the Director's custom state handlers. The scenario seeds a project checkpoint and a creative review under their production keys. Existing cases can also seed a cached Director judgment. The Director reads and writes through the SDK platform client throughout.
+
+## Reproduce the comparison
+
+1. Use a standalone Director checkout and a NuGet configuration that resolves `CSweet.Agent.SDK` and `CSweet.Agent.Testing` `5.42.0` from the packed feed, with a source for the remaining dependencies. Use an empty package cache for the first restore.
+2. Run the commands below from the repository root. Set `$config` to the NuGet configuration path and `$packages` to the cache directory.
+
+```powershell
+$flags = '-p:UseLocalCSweetAgentSdk=false', '-p:UseLocalCSweetMemory=false', '-p:UseLocalCSweetWorkManagementContracts=false'
+dotnet restore CSweet.Agent.Director.VideoGame.slnx --configfile $config --packages $packages @flags
+dotnet test -c Release --no-restore --filter Category=AgentHarness @flags
+```
+
+Both 20-run samples used .NET SDK 10.0.401 on `DESKTOP-1LDJV2J`. Each run alternated the wording of the stale-brief diagnostic, built incrementally and ran both filtered tests with a TRX logger. Timing includes the edit, build, test process and result file. The p95 is the 19th sorted observation of 20. A single before-and-after sample does not establish the cause of the timing difference.
+
+The original authoring measurement used one Codex author already familiar with the harness, Director `aad24bc`, and the then-local prototype SDK. That prototype reused version `5.41.0` independently of the subsequently released SDK. The follow-up uses SDK commit `308b79e`, which includes the released SDK changes. New-maintainer onboarding time remains unmeasured.
+
+For setup size, compare `PitchEscalationTests.cs` with the pre-pilot test on Director `0a155fc` (identical to `aad24bc` for this file). Count added or replaced nonblank lines from scenario arrangement through agent configuration, plus those inside the shared test fixture, including braces. The baseline supplied 53 existing fixture lines. Delivery, outcome assertions, package wiring and documentation fall outside the count. There are zero new seed files. The original sample's serialized Producer review was 545 bytes within a 1,891-byte coordination request.
