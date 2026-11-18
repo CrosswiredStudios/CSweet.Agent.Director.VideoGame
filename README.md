@@ -1,4 +1,6 @@
-# Director 0.14.1
+# Director 0.14.2
+
+Recorded requirement decisions complete the Director’s answer commitment while their scoped directions remain in force. See the [0.14.2 release notes](releases/0.14.2.md).
 
 Staffing judgments retain full explanations and required corrections. Initial coverage follows
 approaching work without historical-velocity or default-team requirements. Accountability describes

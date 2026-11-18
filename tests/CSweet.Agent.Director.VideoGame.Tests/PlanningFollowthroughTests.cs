@@ -95,6 +95,16 @@ public sealed class PlanningFollowthroughTests
     }
 
     [Fact]
+    public void PrismBreakScopedPauseIsAnAnsweredManagementDecision()
+    {
+        var decision = new Journey().Decision with { Status = "Decided", SelectedOptionId = "choice-0",
+            TypeData = JsonSerializer.SerializeToElement(new { contract = RequirementDecisions.Contract }),
+            Options = [new("choice-0", "Pause the scoped renderer spike until its generator is repaired", null)],
+            Rationale = "Hold this increment pending verified technical repair." };
+        Assert.True(VideoGameDirectorAgent.PlanningDirectionRecorded(decision));
+    }
+
+    [Fact]
     public async Task NewCompletedEvidenceReopensAnEvidenceRequestThroughGovernedSupersession()
     {
         var j = new Journey { RequireEvidence = true }; await j.Configure();

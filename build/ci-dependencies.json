@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "packages": {
     "CSweet.Agent.SDK": {
+      "5.41.0": { "commit": "378523ef2f7b34ba058140aa713e0a4151a2f623" },
       "5.28.0": {
         "commit": "3f4d9ac410b53b82c880b4f50997d4c2e9626549"
       },
