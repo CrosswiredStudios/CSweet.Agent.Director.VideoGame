@@ -1,8 +1,10 @@
 # Director 0.14.3
 
-Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.41.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
+Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.42.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
 
-# Director 0.14.1
+# Director 0.14.2
+
+Recorded requirement decisions complete the Director’s answer commitment while their scoped directions remain in force. See the [0.14.2 release notes](releases/0.14.2.md).
 
 Staffing judgments retain full explanations and required corrections. Initial coverage follows
 approaching work without historical-velocity or default-team requirements. Accountability describes

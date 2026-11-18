@@ -53,14 +53,18 @@ public sealed class PitchEscalationTests
         Assert.Equal($"coordination-turn:{request.SessionId:N}:{request.TurnOrdinal}", reply.IdempotencyKey);
         Assert.Equal(AgentCoordinationDispositions.Blocked, reply.Disposition);
         Assert.Null(reply.Artifact);
+        var cached = await f.Context.Platform.ReadOperatingStateAsync<DirectorReview>(f.ReviewKey);
         if (staleHash)
         {
             Assert.Contains("exact shared planning document", reply.Content);
+            Assert.Null(cached);
             Assert.Empty(modelSteps);
             Assert.Equal(0, f.Requests);
             return;
         }
 
+        Assert.Equal(f.CachedAnswer, cached!.Payload);
+        Assert.Equal(1, cached.Revision);
         Assert.Equal("director-production-baseline-review", Assert.Single(modelSteps));
         Assert.Equal(1, f.Requests);
         var decision = Assert.IsType<DecisionRecord>(f.Decision);
@@ -137,8 +141,7 @@ public sealed class PitchEscalationTests
     [Fact]
     public async Task ARealExternalConstraintIsRetainedWhileMissingDatesNeedNoEscalation()
     {
-        var f = new Fixture();
-        f.CachedAnswer = new(false, "No deadline is required. Plan feasibility first within existing authority.", "");
+        var f = new Fixture(cachedAnswer: new(false, "No deadline is required. Plan feasibility first within existing authority.", ""));
         var result = await new VideoGameDirectorAgent().ReviewProducerPitchAsync(f.Request, f.State, f.Review, f.Context, default);
         Assert.Equal("Continue", result.Disposition);
         Assert.Equal(0, f.Requests);
@@ -152,12 +155,14 @@ public sealed class PitchEscalationTests
         public AgentRuntimeContext Context { get; }
         public AgentTestRuntime Runtime { get; }
         public DecisionRecord? Decision;
-        public DirectorReview CachedAnswer = new(false, "Audio licensing exceeds my authority.", "", true, "May we license the requested audio, or use supplied audio only?");
+        public DirectorReview CachedAnswer { get; }
+        public string ReviewKey => $"pitch-director:{Request.SessionId:N}:{Request.TurnOrdinal}";
         public int Requests, Resumes;
         public AgentCoordinationSession Session { get; private set; }
         public void SetSessionStatus(string status) => Session = Session with { Status = status };
-        public Fixture(bool seedCachedReview = true)
+        public Fixture(bool seedCachedReview = true, DirectorReview? cachedAnswer = null)
         {
+            CachedAnswer = cachedAnswer ?? new(false, "Audio licensing exceeds my authority.", "", true, "May we license the requested audio, or use supplied audio only?");
             var director = Guid.NewGuid(); var producer = Guid.NewGuid(); var project = Guid.NewGuid(); var team = Guid.NewGuid();
             var document = Guid.NewGuid(); var revision = Guid.NewGuid(); var session = Guid.NewGuid();
             var now = DateTimeOffset.UtcNow;
@@ -169,22 +174,6 @@ public sealed class PitchEscalationTests
             Session = new(session, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Request.Self, Request.Counterpart,
                 "Brief", "Plan", [], "Blocked", 3, 3, null, false, "Production brief paused for manager decision", now, now, []) { WorkContext = Request.WorkContext };
             var markdown = string.Join("\n", new[] { "Scope", "Player experience", "Non-goals", "Acceptance criteria", "Deliverables", "Constraints", "Risks", "Open questions" }.Select(x => "## " + x + "\nDetails."));
-            var reviewKey = $"pitch-director:{session:N}:{Request.TurnOrdinal}";
-            AgentOperatingStateResponse? savedReview = null;
-            AgentOperatingStateResponse? ReadState(string key)
-            {
-                if (key == reviewKey && !seedCachedReview) return savedReview;
-                JsonElement? payload = key switch
-                {
-                    var k when k == reviewKey => JsonSerializer.SerializeToElement(CachedAnswer, PitchProtocol.Json),
-                    var k when k == VideoGameDirectorAgent.ProjectStateKey(project, null) => JsonSerializer.SerializeToElement(State, PitchProtocol.Json),
-                    var k when k == $"director-creative-review:{project:N}:{revision:N}:{State.AcceptedVision!.ArtifactRevisionId:N}" =>
-                        CreativeReviewFixture.Accepted(State, document, revision, Review.RevisionSha256),
-                    _ => null
-                };
-                return payload is { } data ? new(Guid.NewGuid(), key, "test", 1, "Active",
-                    new Dictionary<string, string>(), [], "test", [], Guid.NewGuid(), data, 1, now, now) : null;
-            }
             Runtime = new AgentTestRuntime()
                 .RegisterCapability<JsonElement, ArtifactDocument>(PlatformCapabilities.ArtifactRead, (read, _) =>
                 {
@@ -201,16 +190,6 @@ public sealed class PitchEscalationTests
                         r.RecommendedOptionId, null, DecisionStatuses.Pending, null, r.Evidence, null, null, r.DueAt, 1, now, now, r.TypeData);
                     return Task.FromResult(Decision);
                 })
-                .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
-                    (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(ReadState(r.StateKey))))
-                .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite, (write, _) =>
-                {
-                    Assert.Equal(reviewKey, write.StateKey);
-                    savedReview = new(Guid.NewGuid(), write.StateKey, write.SchemaId, write.SchemaVersion, write.Status,
-                        write.SourceRevisions, write.ConditionCodes, write.DecisionFingerprint, write.OpenCommitmentCorrelations,
-                        write.AttentionReviewId, write.Payload, 1, now, now);
-                    return Task.FromResult(savedReview);
-                })
                 .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(Session))
                 .RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume, (r, _) =>
                 {
@@ -218,6 +197,11 @@ public sealed class PitchEscalationTests
                     Session = Session with { Status = "Active", Revision = Session.Revision + 1 };
                     return Task.FromResult(Session);
                 });
+            var operatingState = new OperatingStateFixture(Runtime);
+            operatingState.Seed(VideoGameDirectorAgent.ProjectStateKey(project, null), State);
+            operatingState.Seed($"director-creative-review:{project:N}:{revision:N}:{State.AcceptedVision!.ArtifactRevisionId:N}",
+                CreativeReviewFixture.Accepted(State, document, revision, Review.RevisionSha256));
+            if (seedCachedReview) operatingState.Seed(ReviewKey, CachedAnswer);
             Context = Runtime.CreateContext(identity: new AgentIdentity(director.ToString("D"), "Marcus", null, "Director", null, [], null, Guid.NewGuid().ToString("D"), "Owner"));
         }
     }

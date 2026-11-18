@@ -9,7 +9,9 @@ public sealed partial class VideoGameDirectorAgent
     internal const string PlanningFollowthroughPrefix = "creative-planning-followthrough:";
     internal static bool PlanningDirectionRecorded(DecisionRecord decision) =>
         decision.Status == DecisionStatuses.Decided && decision.SupersededByDecisionId is null &&
-        decision.SelectedOptionId is "continue-current-plan" or "provide-direction" && !string.IsNullOrWhiteSpace(decision.Rationale);
+        !string.IsNullOrWhiteSpace(decision.Rationale) && (decision.SelectedOptionId is "continue-current-plan" or "provide-direction" ||
+            (RequirementDecisions.IsGrounded(decision) || ContributionAdmission.Read(decision.TypeData) != null) &&
+            decision.Options.Any(option => option.Id == decision.SelectedOptionId));
 
     private static Guid? PlanningBoard(DecisionRecord decision) => decision.TypeData is { ValueKind: JsonValueKind.Object } data &&
         data.TryGetProperty("boardId", out var board) && board.TryGetGuid(out var id) ? id : null;
@@ -39,7 +41,8 @@ public sealed partial class VideoGameDirectorAgent
         decision = await DecisionContinuations.ReadCurrentAsync(context.Platform, decision.Id, project, token);
         if (decision is null || decision.TypeKey != "video-game.management-direction.v1")
             return PersonalTodoResult.Blocked("The replacement decision is unavailable, cyclic, or belongs to another project or workflow.");
-        if (decision.Status == DecisionStatuses.Decided && decision.SelectedOptionId == "request-more-evidence" && decision.AuthorityRuleKey == "work-planning")
+        if (decision.Status == DecisionStatuses.Decided && decision.SelectedOptionId == "request-more-evidence" &&
+            decision.AuthorityRuleKey == "work-planning" && ContributionAdmission.Read(decision.TypeData) is null)
         {
             var evidence = await ReadCompletedPlanningEvidenceAsync(decision, context, token);
             if (evidence.Count > 0)
