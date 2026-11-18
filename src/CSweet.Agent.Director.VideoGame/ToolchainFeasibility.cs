@@ -27,13 +27,13 @@ public sealed partial class VideoGameDirectorAgent
         return string.Join('\n', lines);
     }
 
-    private static string[] ToolchainTargets(GameDirectorOperatingState state)
-    {
-        var text = string.Join(" ", state.ManagerPreferences.PlatformConstraints.Append(InScopeToolchainText(state.AcceptedVision?.Markdown ?? "")));
-        var targets = new List<string>();
-        if (HasAffirmativeMention(text, @"\b(?:web|browser|chromium)\b")) targets.Add("web");
-        return targets.ToArray();
-    }
+    private static string[] ToolchainTargets(GameDirectorOperatingState state) =>
+        DetermineRequiredRecipe(state) is not null && state.ToolchainFeasibilityEvidence is { } reviewed
+            ? reviewed.TargetKeys.ToArray() : [];
+
+    private static bool RequestsWebCapacity(GameDirectorOperatingState state) =>
+        HasAffirmativeMention(string.Join(" ", state.ManagerPreferences.PlatformConstraints.Append(
+            InScopeToolchainText(state.AcceptedVision?.Markdown ?? ""))), @"\b(?:web|browser|chromium)\b");
 
     private static bool OfferedRecipe(JsonElement offer, ToolchainFeasibilityEvidenceV1 evidence)
     {

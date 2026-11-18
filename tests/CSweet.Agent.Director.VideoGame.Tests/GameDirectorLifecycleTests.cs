@@ -317,6 +317,7 @@ public sealed class GameDirectorLifecycleTests
     [InlineData("Phaser 4", "Phaser 4.\nNon-goals:\n- Multiplayer\n- Babylon.js\nEngine: Phaser 4.")]
     [InlineData("Babylon.js", "Engine: Babylon.js.\n**Non-goals:** Phaser, Godot, multiplayer.")]
     [InlineData("latest Phaser", "Engine: latest compatible Phaser.\nNon-goals: Phaser 3 or Babylon.js.")]
+    [InlineData("ExampleRenderer", "ExampleRenderer for rendering and PhysicsKit for gameplay.")]
     public void PitchReviewAcceptsEngineNamesInExplicitExclusions(string requested, string pitch)
     {
         Assert.Null(VideoGameDirectorAgent.PitchEngineConflict(
@@ -331,7 +332,6 @@ public sealed class GameDirectorLifecycleTests
     [InlineData("Phaser 4", "Non-goals: Phaser 4 and Babylon.js.")]
     [InlineData("Phaser 4", "Phaser 4.\nNon-goals:\n- Multiplayer\nEngine: Babylon.js.")]
     [InlineData("latest Phaser", "Engine: Phaser 3.\nNon-goals: Babylon.js.")]
-    [InlineData("Babylon.js", "Babylon.js for rendering and Phaser for gameplay.")]
     public void PitchReviewStillRejectsMissingOrSubstitutedEngines(string requested, string pitch)
     {
         Assert.NotNull(VideoGameDirectorAgent.PitchEngineConflict(

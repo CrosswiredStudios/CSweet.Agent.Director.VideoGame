@@ -333,7 +333,7 @@ public sealed class ProductionCommitmentTests
             PlatformCapabilities.ToolchainCatalogRead, (_, _) => { catalogs++; return Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]); });
         runtime.RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read,
             (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([JsonSerializer.Deserialize<ResourceRequestState>("{}")! with {
-                ResourceType = ResourceCapabilities.BuildToolchain, ProfileKey = "phaser.web-2d.v1", Status = "Certifying" }]));
+                ResourceType = ResourceCapabilities.BuildToolchain, ProfileKey = "node-typescript.v1", Status = "Certifying" }]));
         var result = await new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default);
         Assert.False(result.Ready);
         Assert.Equal(expected ? 1 : 0, catalogs);
@@ -395,7 +395,7 @@ public sealed class ProductionCommitmentTests
             .RegisterCapability<ReadToolchainCatalogV2Request, IReadOnlyList<EligibleToolchainAdapter>>(PlatformCapabilities.ToolchainCatalogRead, (_, _) => Task.FromResult<IReadOnlyList<EligibleToolchainAdapter>>([]))
             .RegisterCapability<ResourceRead, IReadOnlyList<ResourceRequestState>>(ResourceCapabilities.Read, (_, _) => Task.FromResult<IReadOnlyList<ResourceRequestState>>([
                 JsonSerializer.Deserialize<ResourceRequestState>("{}")! with { Id = Guid.NewGuid(), Status = status, ResourceType = ResourceCapabilities.BuildToolchain,
-                    ProfileKey = "phaser.web-2d.v1", Condition = "Configure catalog read access for the private provider repository." }]));
+                    ProfileKey = "node-typescript.v1", Condition = "Configure catalog read access for the private provider repository." }]));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new VideoGameDirectorAgent().EnsureToolchainDecisionAsync(state, 1, Guid.NewGuid(), runtime.CreateContext(), default));
         Assert.Contains("catalog read access", error.Message); Assert.Contains(status, error.Message);
     }

@@ -35,7 +35,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
     ];
 
     public override string AgentId => "com.csweet.video-game-director";
-    public override string Version => "0.15.0";
+    public override string Version => "0.15.1";
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) => builder
         .LlmProvider("llmProviderId", "LLM provider", required: true,
@@ -1055,7 +1055,7 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
         var pattern = @"(?<![\w.])" + Regex.Escape(requested) + @"(?![\w.]\w)";
         if (!HasAffirmativeMention(text, pattern) || latest && Regex.IsMatch(text, pattern + @"\s+v?\d", RegexOptions.IgnoreCase))
             return $"Preserve the owner's explicit engine constraint '{choice}' in the pitch.";
-        var conflicting = Regex.Matches(text, @"(?im)(?:^\s*engine:\s*|\buse\s+)(?<engine>[A-Z][\w.-]*)(?=\s+instead|\s*[.]?\s*$)", RegexOptions.None);
+        var conflicting = Regex.Matches(text, @"(?im)(?:^\s*(?:engine:\s*|#{1,6}\s+engine\s*\n\s*)|\buse\s+)(?<engine>[A-Z][\w.-]*)(?=\s+instead|\s*[.]?\s*$)", RegexOptions.None);
         return conflicting.Any(m => !requested.StartsWith(m.Groups["engine"].Value.TrimEnd('.'), StringComparison.OrdinalIgnoreCase)) ?
             $"Reconcile the conflicting engine direction with '{choice}'." : null;
     }
@@ -1953,10 +1953,11 @@ public sealed partial class VideoGameDirectorAgent : CSweetManagerAgentBase
             .Append(new KeyValuePair<string, Guid>(VideoGameRoleKeys.TechnicalDirector, technicalDirectorId))
             .ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal) };
         var catalog = await context.Platform.ReadEligibleToolchainsAsync(FeasibilityCatalogRequest(recipe, targets), cancellationToken);
-        if (catalog.Count == 0 && targets.Contains("web"))
+        if (catalog.Count == 0 && (targets.Contains("web") || targets.Length == 0 && RequestsWebCapacity(state)))
         {
-            var capacityProfile = recipe ?? "node-typescript.v1";
             var resources = await context.Platform.Resources.ReadAsync(new(WorkstreamId: workstreamId), cancellationToken);
+            var capacityProfile = recipe ?? resources.FirstOrDefault(x => x.ResourceType == ResourceCapabilities.BuildToolchain &&
+                x.Plan?.HandlerKey == "node-typescript.v1")?.ProfileKey ?? "node-typescript.v1";
             if (!resources.Any(x => x.ResourceType == ResourceCapabilities.BuildToolchain && x.ProfileKey == capacityProfile))
             {
                 var need = new ResourceRequest(workstreamId, ResourceCapabilities.BuildToolchain, capacityProfile,
