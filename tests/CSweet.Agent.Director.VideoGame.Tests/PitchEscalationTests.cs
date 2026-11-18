@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CSweet.Agent.SDK;
+using CSweet.Agent.Testing;
 using CSweet.WorkManagement.Contracts;
 using CrosswiredStudios.VideoGame.PitchCollaboration;
 
@@ -7,6 +8,75 @@ namespace CSweet.Agent.Director.VideoGame.Tests;
 
 public sealed class PitchEscalationTests
 {
+    [Theory, Trait("Category", "AgentHarness")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pitch_review_escalates_audio_licensing_only_for_the_exact_brief(bool staleHash)
+    {
+        var f = new Fixture(seedCachedReview: false);
+        var review = staleHash ? f.Review with { RevisionSha256 = new string('b', 64) } : f.Review;
+        var artifact = PitchProtocol.Artifact(PitchProtocol.ReviewType, review.PitchDigest, review);
+        var turn = new AgentCoordinationTurn(Guid.NewGuid(), 1, f.Request.Counterpart.OrganizationUserId,
+            "Continue", review.Rationale, DateTimeOffset.UtcNow,
+            new(artifact.Type, artifact.SchemaVersion, artifact.Key, artifact.PageOrdinal, artifact.IsFinalPage, artifact.Payload, "fixture"));
+        var request = f.Request with { Transcript = [turn] };
+        var modelSteps = new List<string>();
+        var replies = new List<RespondToAgentCoordinationRequest>();
+        f.Runtime.RegisterCapability<object, PersonalTodoDirectory>(PersonalTodoCapabilities.Read,
+            (_, _) => Task.FromResult(new PersonalTodoDirectory([])));
+        f.Runtime.RegisterCapability<JsonElement, JsonElement>(PlatformCapabilities.LlmChatStream, (call, _) =>
+        {
+            modelSteps.Add(call.GetProperty("telemetry").GetProperty("invocationKind").GetString()!);
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { text = JsonSerializer.Serialize(f.CachedAnswer, PitchProtocol.Json) }));
+        });
+        f.Runtime.RegisterCapability<RespondToAgentCoordinationRequest, AgentCoordinationSession>(
+            CommunicationCapabilities.CoordinationRespond, (reply, _) =>
+            {
+                replies.Add(reply);
+                return Task.FromResult(f.Session with { FinalSummary = reply.Content });
+            });
+        var host = new AgentTestHost(new VideoGameDirectorAgent(), f.Runtime, f.Context.Identity,
+            businessId: request.WorkContext!.OrganizationId.ToString("D"), installationId: request.Self.AgentInstallationId.ToString("D"));
+        var settings = new UpdateAgentConfigurationRequest(new Dictionary<string, JsonElement>
+        {
+            ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid()),
+            ["llmModel"] = JsonSerializer.SerializeToElement("scripted-director")
+        });
+        Assert.True((await host.ExecuteCapabilityAsync(AgentConfigurationCapabilities.Update, settings)).Succeeded);
+
+        Assert.True((await host.DeliverCoordinationTurnAsync(request)).Succeeded);
+
+        var reply = Assert.Single(replies);
+        Assert.Equal(request.SessionId, reply.SessionId);
+        Assert.Equal(request.ExpectedRevision, reply.ExpectedRevision);
+        Assert.Equal(request.TurnOrdinal, reply.ExpectedTurnOrdinal);
+        Assert.Equal($"coordination-turn:{request.SessionId:N}:{request.TurnOrdinal}", reply.IdempotencyKey);
+        Assert.Equal(AgentCoordinationDispositions.Blocked, reply.Disposition);
+        Assert.Null(reply.Artifact);
+        var cached = await f.Context.Platform.ReadOperatingStateAsync<DirectorReview>(f.ReviewKey);
+        if (staleHash)
+        {
+            Assert.Contains("exact shared planning document", reply.Content);
+            Assert.Null(cached);
+            Assert.Empty(modelSteps);
+            Assert.Equal(0, f.Requests);
+            return;
+        }
+
+        Assert.Equal(f.CachedAnswer, cached!.Payload);
+        Assert.Equal(1, cached.Revision);
+        Assert.Equal("director-production-baseline-review", Assert.Single(modelSteps));
+        Assert.Equal(1, f.Requests);
+        var decision = Assert.IsType<DecisionRecord>(f.Decision);
+        Assert.Equal(DecisionStatuses.Pending, decision.Status);
+        Assert.Equal(f.CachedAnswer.OwnerQuestion, decision.Summary);
+        Assert.Equal(f.State.WorkstreamId, decision.WorkstreamId);
+        var binding = VideoGameDirectorAgent.PitchDecision(decision);
+        Assert.Equal(new VideoGameDirectorAgent.PitchDecisionContext(request.SessionId, review.DocumentId,
+            review.RevisionId, review.RevisionSha256, request.Counterpart.OrganizationUserId, review.PitchDigest), binding);
+        Assert.Contains(decision.Id.ToString("D"), reply.Content);
+    }
+
     [Fact]
     public async Task DecisionEventBeforePauseCommitIsRecoveredByNormalDiscovery()
     {
@@ -71,8 +141,7 @@ public sealed class PitchEscalationTests
     [Fact]
     public async Task ARealExternalConstraintIsRetainedWhileMissingDatesNeedNoEscalation()
     {
-        var f = new Fixture();
-        f.CachedAnswer = new(false, "No deadline is required. Plan feasibility first within existing authority.", "");
+        var f = new Fixture(cachedAnswer: new(false, "No deadline is required. Plan feasibility first within existing authority.", ""));
         var result = await new VideoGameDirectorAgent().ReviewProducerPitchAsync(f.Request, f.State, f.Review, f.Context, default);
         Assert.Equal("Continue", result.Disposition);
         Assert.Equal(0, f.Requests);
@@ -84,43 +153,43 @@ public sealed class PitchEscalationTests
         public AgentCoordinationTurnRequest Request { get; }
         public PitchReview Review { get; }
         public AgentRuntimeContext Context { get; }
+        public AgentTestRuntime Runtime { get; }
         public DecisionRecord? Decision;
-        public DirectorReview CachedAnswer = new(false, "Audio licensing exceeds my authority.", "", true, "May we license the requested audio, or use supplied audio only?");
+        public DirectorReview CachedAnswer { get; }
+        public string ReviewKey => $"pitch-director:{Request.SessionId:N}:{Request.TurnOrdinal}";
         public int Requests, Resumes;
-        private AgentCoordinationSession Session;
+        public AgentCoordinationSession Session { get; private set; }
         public void SetSessionStatus(string status) => Session = Session with { Status = status };
-        public Fixture()
+        public Fixture(bool seedCachedReview = true, DirectorReview? cachedAnswer = null)
         {
+            CachedAnswer = cachedAnswer ?? new(false, "Audio licensing exceeds my authority.", "", true, "May we license the requested audio, or use supplied audio only?");
             var director = Guid.NewGuid(); var producer = Guid.NewGuid(); var project = Guid.NewGuid(); var team = Guid.NewGuid();
             var document = Guid.NewGuid(); var revision = Guid.NewGuid(); var session = Guid.NewGuid();
             var now = DateTimeOffset.UtcNow;
             State = new() { WorkstreamId = project, TeamId = team, ProducerEmployeeId = producer, CreativeDirectorEmployeeId = Guid.NewGuid(), HandoffSessionId = session,
                 AcceptedVision = new(1, "pitch", "Game", Guid.NewGuid(), Guid.NewGuid(), "sha", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), now) };
             Review = new("pitch", document, revision, new string('a', 64), false, ["Audio license authority?"], "Authority affects audio scope.");
-            Request = new(session, 2, 2, "Brief", "Plan", [], new(director, Guid.NewGuid(), "Naomi", "Director"),
-                new(producer, Guid.NewGuid(), "Gabriel", "Producer"), false, []) { WorkContext = new(Guid.NewGuid(), project, team, null, null, null, null, Guid.NewGuid(), null, null) };
+            Request = new(session, 2, 2, "Brief", "Plan", [], new(director, Guid.NewGuid(), "Marcus", "Director"),
+                new(producer, Guid.NewGuid(), "Gabriel", "Producer"), false, []) { WorkContext = new(Guid.NewGuid(), project, team, null, null, null, null, session, null, null) };
             Session = new(session, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Request.Self, Request.Counterpart,
                 "Brief", "Plan", [], "Blocked", 3, 3, null, false, "Production brief paused for manager decision", now, now, []) { WorkContext = Request.WorkContext };
             var markdown = string.Join("\n", new[] { "Scope", "Player experience", "Non-goals", "Acceptance criteria", "Deliverables", "Constraints", "Risks", "Open questions" }.Select(x => "## " + x + "\nDetails."));
-            var runtime = new AgentTestRuntime()
-                .RegisterCapability<JsonElement, ArtifactDocument>(PlatformCapabilities.ArtifactRead, (_, _) => Task.FromResult(
-                    new ArtifactDocument(document, "Brief", PitchProtocol.DocumentType, "Draft", revision, null, null, null, null,
-                        [new(revision, 1, null, markdown, Review.RevisionSha256, "Draft", now, null, null)]) { WorkstreamId = project, TeamId = team }))
+            Runtime = new AgentTestRuntime()
+                .RegisterCapability<JsonElement, ArtifactDocument>(PlatformCapabilities.ArtifactRead, (read, _) =>
+                {
+                    Assert.Equal(document, read.GetProperty("artifactId").GetGuid());
+                    return Task.FromResult(new ArtifactDocument(document, "Brief", PitchProtocol.DocumentType, "Draft", revision, null, null, null, null,
+                        [new(revision, 1, null, markdown, Review.RevisionSha256, "Draft", now, null, null)]) { WorkstreamId = project, TeamId = team });
+                })
                 .RegisterCapability<ReadDecisionRequest, IReadOnlyList<DecisionRecord>>(DecisionCapabilityNames.ReadV1,
                     (_, _) => Task.FromResult<IReadOnlyList<DecisionRecord>>(Decision is null ? [] : [Decision]))
                 .RegisterCapability<DecisionRequest, DecisionRecord>(DecisionCapabilityNames.RequestV1, (r, _) =>
                 {
                     Requests++; Assert.Equal("material-strategy-change", r.AuthorityRuleKey);
-                    Decision = new(Guid.NewGuid(), project, r.TypeKey, r.Summary, r.AuthorityRuleKey, r.Options,
+                    Decision = new(Guid.NewGuid(), r.WorkstreamId, r.TypeKey, r.Summary, r.AuthorityRuleKey, r.Options,
                         r.RecommendedOptionId, null, DecisionStatuses.Pending, null, r.Evidence, null, null, r.DueAt, 1, now, now, r.TypeData);
                     return Task.FromResult(Decision);
                 })
-                .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
-                    (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(new(Guid.NewGuid(), r.StateKey, "test", 1, "Active",
-                        new Dictionary<string, string>(), [], "test", [], Guid.NewGuid(),
-                        r.StateKey.StartsWith("director-creative-review:") ? CreativeReviewFixture.Accepted(State, document, revision, Review.RevisionSha256) : r.StateKey.StartsWith("pitch-director:", StringComparison.Ordinal)
-                            ? JsonSerializer.SerializeToElement(CachedAnswer, PitchProtocol.Json)
-                            : JsonSerializer.SerializeToElement(State, PitchProtocol.Json), 1, now, now))))
                 .RegisterCapability<ReadAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationRead, (_, _) => Task.FromResult(Session))
                 .RegisterCapability<ResumeAgentCoordinationRequest, AgentCoordinationSession>(CommunicationCapabilities.CoordinationResume, (r, _) =>
                 {
@@ -128,7 +197,12 @@ public sealed class PitchEscalationTests
                     Session = Session with { Status = "Active", Revision = Session.Revision + 1 };
                     return Task.FromResult(Session);
                 });
-            Context = runtime.CreateContext(identity: new AgentIdentity(director.ToString("D"), "Naomi", null, "Director", null, [], null, Guid.NewGuid().ToString("D"), "Owner"));
+            var operatingState = new OperatingStateFixture(Runtime);
+            operatingState.Seed(VideoGameDirectorAgent.ProjectStateKey(project, null), State);
+            operatingState.Seed($"director-creative-review:{project:N}:{revision:N}:{State.AcceptedVision!.ArtifactRevisionId:N}",
+                CreativeReviewFixture.Accepted(State, document, revision, Review.RevisionSha256));
+            if (seedCachedReview) operatingState.Seed(ReviewKey, CachedAnswer);
+            Context = Runtime.CreateContext(identity: new AgentIdentity(director.ToString("D"), "Marcus", null, "Director", null, [], null, Guid.NewGuid().ToString("D"), "Owner"));
         }
     }
 }

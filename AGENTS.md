@@ -6,7 +6,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.video-game-director` and version `0.14.2` synchronized between agent code,
+- Keep `com.csweet.video-game-director` and version `0.14.3` synchronized between agent code,
   `csweet-plugin.json`, tests, and releases.
 - The root manifest is the reviewed authority request. Keep `provides`, `requires`, events,
   configuration, credentials, web access, and UI contributions synchronized with implementation
@@ -27,6 +27,8 @@ Run from the repository root:
 dotnet test
 dotnet run --project src/CSweet.Agent.Director.VideoGame -- --self-test
 ```
+
+For changes to the Director's review of a Producer pitch, run `dotnet test -c Release --filter Category=AgentHarness` while editing. The [pitch-review test](tests/CSweet.Agent.Director.VideoGame.Tests/PitchEscalationTests.cs) shows how to deliver a coordination turn and inspect the submitted answer.
 
 Any new capability, grant, event, configuration field, credential, or network rule requires a
 manifest update, a README explanation, and tests.

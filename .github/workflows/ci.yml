@@ -24,6 +24,29 @@ jobs:
         env:
           CSWEET_DEPENDENCY_TOKEN: ${{ secrets.CSWEET_DEPENDENCY_READ_TOKEN }}
         run: python3 scripts/prepare-ci-dependencies.py
+      - name: Pack the companion harness when verifying an unpublished SDK
+        shell: pwsh
+        run: |
+          $proofPath = '.artifacts/ci-dependencies/resolved.json'
+          $proof = Get-Content -Raw $proofPath | ConvertFrom-Json
+          [xml]$tests = Get-Content -Raw 'tests/CSweet.Agent.Director.VideoGame.Tests/CSweet.Agent.Director.VideoGame.Tests.csproj'
+          $version = ($tests.Project.ItemGroup.PackageReference | Where-Object Include -eq 'CSweet.Agent.Testing').Version
+          $sdk = @($proof.packages | Where-Object { $_.package -eq 'CSweet.Agent.SDK' -and $_.version -eq $version })
+          if ($sdk.Count -ne 1) { throw "Expected the SDK matching the test package at $version." }
+          if ($sdk[0].origin -eq 'nuget.org') { return }
+
+          $root = Join-Path $env:RUNNER_TEMP 'csweet-ci-dependencies/source'
+          $sources = @(Get-ChildItem $root -Directory -Filter "CSweet.Agent.SDK-$version-*" |
+            Where-Object { (git -C $_.FullName rev-parse HEAD) -eq $sdk[0].commit })
+          if ($sources.Count -ne 1) { throw 'Expected one checkout at the verified SDK commit.' }
+          $project = Join-Path $sources[0].FullName 'src/CSweet.Agent.Testing/CSweet.Agent.Testing.csproj'
+          dotnet pack $project -c Release -o $env:RestoreAdditionalProjectSources -p:UseLocalCSweetWorkManagementContracts=false
+          if ($LASTEXITCODE -ne 0) { throw 'Packing the pinned test harness failed.' }
+
+          $package = Join-Path $env:RestoreAdditionalProjectSources "CSweet.Agent.Testing.$version.nupkg"
+          $proof.packages += [ordered]@{ package = 'CSweet.Agent.Testing'; version = $version; origin = 'source'
+            commit = $sdk[0].commit; repository = $sdk[0].repository; sha256 = (Get-FileHash $package).Hash.ToLowerInvariant() }
+          $proof | ConvertTo-Json -Depth 8 | Set-Content $proofPath
       - name: Verify bundled extension provenance
         shell: pwsh
         run: |
