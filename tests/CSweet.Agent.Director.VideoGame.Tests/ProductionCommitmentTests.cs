@@ -174,9 +174,9 @@ public sealed class ProductionCommitmentTests
         var direction = VideoGameDirectorAgent.ParsePlanningDirection(
             """{"optionId":"continue-current-plan","rationale":"The accepted brief already sets this scope.","requiresOwner":false}""", options);
         Assert.Equal("continue-current-plan", direction.OptionId);
-        Assert.Throws<InvalidOperationException>(() => VideoGameDirectorAgent.ParsePlanningDirection(
+        Assert.Throws<AgentModelJsonException>(() => VideoGameDirectorAgent.ParsePlanningDirection(
             """{"optionId":"invented","rationale":"Go ahead.","requiresOwner":false}""", options));
-        Assert.Throws<InvalidOperationException>(() => VideoGameDirectorAgent.ParsePlanningDirection(
+        Assert.Throws<AgentModelJsonException>(() => VideoGameDirectorAgent.ParsePlanningDirection(
             """{"optionId":"continue-current-plan","rationale":" ","requiresOwner":false}""", options));
     }
 

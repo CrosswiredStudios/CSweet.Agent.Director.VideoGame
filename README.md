@@ -1,4 +1,6 @@
-# Director 0.15.1
+# Director 0.15.2
+
+Marcus answers planning questions using the project's board, roster and accepted brief. The selected action determines whether the team needs an owner decision. [Release notes](releases/0.15.2.md)
 
 Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.42.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
 

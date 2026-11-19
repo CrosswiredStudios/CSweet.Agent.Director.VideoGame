@@ -10,11 +10,29 @@ public sealed partial class VideoGameDirectorAgent
     internal static bool PlanningDirectionRecorded(DecisionRecord decision) =>
         decision.Status == DecisionStatuses.Decided && decision.SupersededByDecisionId is null &&
         !string.IsNullOrWhiteSpace(decision.Rationale) && (decision.SelectedOptionId is "continue-current-plan" or "provide-direction" ||
-            (RequirementDecisions.IsGrounded(decision) || ContributionAdmission.Read(decision.TypeData) != null) &&
-            decision.Options.Any(option => option.Id == decision.SelectedOptionId));
+            decision.SelectedOptionId != "request-more-evidence" && decision.Options.Any(option => option.Id == decision.SelectedOptionId));
 
-    private static Guid? PlanningBoard(DecisionRecord decision) => decision.TypeData is { ValueKind: JsonValueKind.Object } data &&
-        data.TryGetProperty("boardId", out var board) && board.TryGetGuid(out var id) ? id : null;
+    private static async Task<WorkBoardDetail?> ReadPlanningBoardAsync(DecisionRecord decision,
+        GameDirectorOperatingState state, AgentRuntimeContext context, CancellationToken token)
+    {
+        if (state.WorkstreamId != decision.WorkstreamId) throw new InvalidOperationException("Planning decision belongs to another project.");
+        var references = decision.Evidence.Where(e => e.Kind == "board").Select(e => e.ResourceId).Distinct().ToArray();
+        if (references.Length > 1) return null;
+        var boardId = references.Length == 1 ? references[0] : state.BoardId;
+        if (boardId is null)
+        {
+            var boards = await context.Platform.Work.ListBoardsAsync(cancellationToken: token);
+            var matches = boards.Where(b => !b.IsArchived && b.WorkstreamId == decision.WorkstreamId &&
+                (state.TeamId == null || b.TeamId == state.TeamId)).Take(2).ToArray();
+            if (matches.Length != 1) return null;
+            boardId = matches[0].Id;
+        }
+        var board = await context.Platform.Work.ReadBoardAsync(boardId.Value, token);
+        if (board.Board.Id != boardId || board.Board.IsArchived || board.Board.WorkstreamId != decision.WorkstreamId ||
+            state.TeamId != null && board.Board.TeamId != state.TeamId)
+            return null;
+        return board;
+    }
 
     private static async Task QueuePlanningFollowthroughAsync(DecisionRecord decision, GameDirectorOperatingState state,
         AgentRuntimeContext context, CancellationToken token)
@@ -25,7 +43,7 @@ public sealed partial class VideoGameDirectorAgent
             "Resolve planning direction: " + decision.Summary,
             "Review the current accepted plan and completed independent execution evidence. Record the authoritative project decision; the Producer resumes from its durable decision event. A recommendation or completed callback alone cannot finish this commitment.",
             "High", null, correlation, SourceConversationId: vision.ConversationId, SourceMessageId: vision.MessageId, CorrelationId: correlation)
-            { WorkContext = new(WorkstreamId: decision.WorkstreamId, BoardId: PlanningBoard(decision), DecisionId: decision.Id) }, token);
+            { WorkContext = new(WorkstreamId: decision.WorkstreamId, BoardId: state.BoardId, DecisionId: decision.Id) }, token);
     }
 
     internal async Task<PersonalTodoResult> HandlePlanningFollowthroughAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken token)
@@ -44,7 +62,7 @@ public sealed partial class VideoGameDirectorAgent
         if (decision.Status == DecisionStatuses.Decided && decision.SelectedOptionId == "request-more-evidence" &&
             decision.AuthorityRuleKey == "work-planning" && ContributionAdmission.Read(decision.TypeData) is null)
         {
-            var evidence = await ReadCompletedPlanningEvidenceAsync(decision, context, token);
+            var evidence = await ReadCompletedPlanningEvidenceAsync(await ReadPlanningBoardAsync(decision, current.State, context, token), context, token);
             if (evidence.Count > 0)
             {
                 var digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(evidence.OrderBy(x => x.WorkItemId))));
@@ -74,7 +92,7 @@ public sealed partial class VideoGameDirectorAgent
         var directory = await context.Platform.PersonalTodo.ListAsync(token);
         foreach (var item in directory.Boards.SelectMany(x => x.Items).Where(x =>
             x.CorrelationId?.StartsWith(PlanningFollowthroughPrefix, StringComparison.Ordinal) == true &&
-            x.WorkContext?.WorkstreamId == project && (board is null || x.WorkContext.BoardId == board)).Take(25))
+            x.WorkContext?.WorkstreamId == project && (board is null || x.WorkContext.BoardId is null || x.WorkContext.BoardId == board)).Take(25))
             await TryRequeuePersonalTodoAsync(item.Id, context, token);
     }
 
@@ -103,12 +121,11 @@ public sealed partial class VideoGameDirectorAgent
         return new(item.Id, item.Identifier, delivery.RepositoryId, review.CandidateDigest, review.Summary, review.Validations);
     }
 
-    private static async Task<IReadOnlyList<CompletedPlanningEvidence>> ReadCompletedPlanningEvidenceAsync(DecisionRecord decision,
+    private static async Task<IReadOnlyList<CompletedPlanningEvidence>> ReadCompletedPlanningEvidenceAsync(WorkBoardDetail? board,
         AgentRuntimeContext context, CancellationToken token)
     {
-        if (PlanningBoard(decision) is not { } boardId) return [];
-        var board = await context.Platform.Work.ReadBoardAsync(boardId, token);
-        if (board.Board.WorkstreamId != decision.WorkstreamId) throw new InvalidOperationException("Planning evidence board belongs to another project.");
+        if (board is null) return [];
+        var boardId = board.Board.Id;
         var completed = board.Items.Where(x => x.Status == "Completed" && x.Delivery is not null && x.SprintId is not null).Take(24).ToArray();
         var evidence = new List<CompletedPlanningEvidence>();
         foreach (var sprint in completed.Select(x => x.SprintId!.Value).Distinct().Take(4))

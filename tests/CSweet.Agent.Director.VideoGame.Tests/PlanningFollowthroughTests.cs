@@ -31,7 +31,7 @@ public sealed class PlanningFollowthroughTests
                 Summary = "Select an exact Phaser version", Options = [new("continue-current-plan", "Continue", null), new("request-more-evidence", "Evidence", null)],
                 Evidence = [new("artifact", artifact, revision, "accepted-sha", "video-game.production-plan.v1", "Accepted")],
                 TypeData = JsonSerializer.SerializeToElement(new { boardId = Board }) };
-            var state = new GameDirectorOperatingState { WorkstreamId = Project,
+            var state = new GameDirectorOperatingState { WorkstreamId = Project, BoardId = Board,
                 AcceptedVision = new(1, "vision", "Phaser game", Guid.NewGuid(), Guid.NewGuid(), "vision-sha", Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow) };
             Item = Empty<WorkItem>() with { Id = Guid.NewGuid(), SprintId = Sprint, Status = "Completed", Identifier = "GAME-11",
                 Delivery = new(Repo, ["Pin Phaser"], ["Exact installed version verified"]) };
@@ -55,7 +55,10 @@ public sealed class PlanningFollowthroughTests
                     Decision = Decision with { Status = "Decided", SelectedOptionId = r.SelectedOptionId, Rationale = r.Rationale, Revision = Decision.Revision + 1 }; return Task.FromResult(Decision);
                 })
                 .RegisterCapability<JsonElement, JsonElement>(PlatformCapabilities.LlmChatStream, (r, _) => {
-                    Models++; var text = r.GetRawText(); Assert.Contains("completedEvidence", text);
+                    var text = r.GetRawText();
+                    if (text.Contains("selected immediate action"))
+                        return Task.FromResult(JsonSerializer.SerializeToElement(new { text = """{"change":null}""" }));
+                    Models++; Assert.Contains("completedEvidence", text);
                     if (RequireEvidence) { Assert.Contains("phaser@4.2.1", text); Assert.Contains(Commit, text); }
                     return Task.FromResult(JsonSerializer.SerializeToElement(new { role = "assistant", text = JsonSerializer.Serialize(new {
                         optionId = RequireEvidence ? "continue-current-plan" : "request-more-evidence", rationale = RequireEvidence ? "The integrated pin passed independent exact-source QA within the accepted engine constraints." : "Independent executed evidence is still missing.", requiresOwner = false }) }));

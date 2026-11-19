@@ -16,5 +16,6 @@
     <Using Include="Xunit" />
     <None Update="Fixtures/qfn-conditional-staffing-approval.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="Fixtures/prism-planning-authority-loop.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Fixtures/prism-planning-capacity.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
