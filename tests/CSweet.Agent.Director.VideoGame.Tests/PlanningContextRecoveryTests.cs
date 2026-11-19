@@ -147,8 +147,11 @@ public sealed class PlanningContextRecoveryTests
         await DeliverPlanningTwiceAsync(f);
         var card = Assert.Single(f.Decisions.Values, d => d.AuthorityRuleKey == "material-strategy-change");
         Assert.Equal("Pending", card.Status);
-        Assert.Contains("static image", card.Summary);
-        Assert.Contains("Deliver a playable game.", card.Summary);
+        Assert.Equal("Should we deliver a picture instead of a playable game?", card.Summary);
+        var change = Assert.Single(card.Options, o => o.Id == "approve-change");
+        Assert.Equal("Deliver a static image.", change.Description);
+        Assert.Equal("Players would see a picture they cannot play.", change.Impact);
+        Assert.Equal("Deliver a playable game.", Assert.Single(card.Options, o => o.Id == "keep-requirement").Description);
         Assert.Equal(0, f.Decides);
         await f.Recover();
         Assert.Equal(1, f.Requests);
@@ -317,7 +320,7 @@ public sealed class PlanningContextRecoveryTests
                     {
                         Assert.DoesNotContain("Keep the playable game.", text);
                         return Task.FromResult<object>(new { text = RequiresOwner
-                            ? """{"change":{"acceptedRequirement":"Deliver a playable game.","proposedChange":"Deliver a static image."}}"""
+                            ? """{"change":{"acceptedRequirement":"Deliver a playable game.","proposedChange":"Deliver a static image.","question":"Should we deliver a picture instead of a playable game?","impact":"Players would see a picture they cannot play."}}"""
                             : """{"change":null}""" });
                     }
                     Models++; Assert.Contains("Adrian", text); Assert.Contains("Fulfilled", text); Assert.Contains(Resource.Status, text);

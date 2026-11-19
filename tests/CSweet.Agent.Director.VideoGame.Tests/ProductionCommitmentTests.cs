@@ -108,7 +108,7 @@ public sealed class ProductionCommitmentTests
             (r, _) => { decisions.Add(r); return Task.FromResult(blocker with { Id = Guid.NewGuid(), AuthorityRuleKey = r.AuthorityRuleKey,
                 Status = feasible ? "Decided" : "Pending", SelectedOptionId = feasible ? r.RecommendedOptionId : null }); });
         runtime.RegisterCapability<JsonElement, object>(PlatformCapabilities.LlmChatStream, (_, _) => Task.FromResult<object>(new {
-            text = """{"question":"How should we address the unresolved requirement?","blockingImpact":"Only the affected work waits.","choices":[{"label":"Investigate the requirement","consequences":"Obtain missing facts","followThrough":"Ask the technical owner for exact dependency evidence"},{"label":"Revise the requirement","consequences":"Requires owner authority","followThrough":"Propose the precise change for approval"}],"recommendedChoice":0}"""
+            text = """{"question":"How should we address the unresolved requirement?","blockingImpact":"Only the affected work waits.","choices":[{"label":"Investigate the requirement","consequences":"Obtain missing facts","impact":"The team will check what is missing before work starts.","followThrough":"Ask the technical owner for exact dependency evidence"},{"label":"Revise the requirement","consequences":"Requires owner authority","impact":"The owner will review a change to the plan.","followThrough":"Propose the precise change for approval"}],"recommendedChoice":0}"""
         }));
         var context = runtime.CreateContext();
         Assert.True((await agent.ExecuteCapabilityAsync(new(Guid.NewGuid(), AgentConfigurationCapabilities.Update,

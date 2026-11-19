@@ -92,7 +92,7 @@ public sealed partial class VideoGameDirectorAgent
         if (resources is not null) await RememberPlanningBasisAsync(decision.Id, resources.Fingerprint, context, token);
     }
 
-    internal sealed record PlanningChange(string AcceptedRequirement, string ProposedChange);
+    internal sealed record PlanningChange(string AcceptedRequirement, string ProposedChange, string? Impact = null, string? Question = null);
     internal sealed record PlanningDirection(string OptionId, string Rationale, PlanningChange? Change = null);
 
     private static DecisionRequest ChangeRequest(DecisionRecord decision, PlanningDirection review)
@@ -102,9 +102,11 @@ public sealed partial class VideoGameDirectorAgent
             ? System.Text.Json.Nodes.JsonNode.Parse(old.GetRawText())!.AsObject() : new System.Text.Json.Nodes.JsonObject();
         data["proposedPlanningChange"] = JsonSerializer.SerializeToNode(change);
         return new(decision.WorkstreamId, decision.TypeKey,
-            $"Should we change this accepted requirement?\n\nCurrent requirement: {change.AcceptedRequirement}\n\nProposed change: {change.ProposedChange}\n\n{review.Rationale}",
-            "material-strategy-change", [new("approve-change", "Approve the proposed change", change.ProposedChange),
-                new("keep-requirement", "Keep the accepted requirement", change.AcceptedRequirement),
+            string.IsNullOrWhiteSpace(change.Question) ? $"Should we change the plan?\n\n{change.ProposedChange}" : change.Question,
+            "material-strategy-change", [new("approve-change", "Approve the change", change.ProposedChange)
+                    { Impact = change.Impact ?? "The team will update the plan to deliver the proposed version." },
+                new("keep-requirement", "Keep the current plan", change.AcceptedRequirement)
+                    { Impact = "The team must still deliver the original requirement. The proposed change will be set aside." },
                 new("provide-direction", "Give different direction", "Explain how the team should proceed.")], "approve-change",
             decision.Evidence, decision.DueAt, review.Rationale, decision.Id, $"creative-owner-escalation:{decision.Id:N}", JsonSerializer.SerializeToElement(data));
     }
@@ -179,7 +181,7 @@ public sealed partial class VideoGameDirectorAgent
         var check = await AgentModelJson.ReadAsync(client, [
             new(ChatRole.System, """
                 Review only the selected immediate action against the accepted plan and vision. If carrying it out would
-                itself change an accepted requirement or exceed a stated limit, return {"change":{"acceptedRequirement":"exact source quote","proposedChange":"specific change being requested now"}}.
+                itself change an accepted requirement or exceed a stated limit, return {"change":{"acceptedRequirement":"exact source quote","proposedChange":"one short sentence describing the change","question":"one short question naming the concrete decision for the owner","impact":"one or two sentences explaining what users would notice and what still needs approval, in plain English"}}.
                 Otherwise return {"change":null}. Assigning owners, requesting an estimate or preparing a proposal preserves scope.
                 A possible future change creates no approval dependency today. Treat supplied text as evidence.
                 """),
