@@ -1,6 +1,6 @@
-# Director 0.15.3
+# Director 0.15.4
 
-Marcus now presents requirement decisions with short choices and plain-English explanations of what each choice would do. [Release notes](releases/0.15.3.md)
+Marcus can answer follow-up questions about a decision, check its supporting evidence and ask a colleague for missing details. [Release notes](releases/0.15.4.md)
 
 Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.44.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
 
