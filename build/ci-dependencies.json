@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "packages": {
     "CSweet.Agent.SDK": {
+      "5.46.1": { "commit": "40a3420e02a4cf88d5a0fc72b04af6c2350aecc4" },
       "5.45.0": { "commit": "f2610bd43a4f961c9424dffe90366465ec44f51d" },
       "5.42.0": { "commit": "308b79ed1c12dcc7198786f1f36d7b60626be325" },
       "5.41.0": { "commit": "378523ef2f7b34ba058140aa713e0a4151a2f623" },
@@ -13,6 +14,7 @@
       }
     },
     "CSweet.WorkManagement.Contracts": {
+      "5.13.0": { "commit": "119b4dc995e595564bbf9edcb6caa8755d4fc3cf" },
       "5.7.0": {
         "commit": "7e3e8be7eda16b0f48d33f4b3a0abdb33ebb3e76"
       },

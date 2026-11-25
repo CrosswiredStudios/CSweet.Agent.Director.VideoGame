@@ -1,8 +1,8 @@
-# Director 0.15.4
+# Director 0.15.5
 
-Marcus can answer follow-up questions about a decision, check its supporting evidence and ask a colleague for missing details. [Release notes](releases/0.15.4.md)
+Marcus uses tracked delegation to send an approved incident correction to the current owner of the affected work. [Release notes](releases/0.15.5.md)
 
-Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.44.0. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
+Run `dotnet test -c Release --filter Category=AgentHarness` from the repository root to exercise the Director's review of a Producer pitch. The cases cover an owner decision about licensed audio and rejection of a mismatched brief hash. They use a scripted model and platform through the packed `CSweet.Agent.Testing` host. Standalone restore requires a feed containing both `CSweet.Agent.SDK` and `CSweet.Agent.Testing` 5.46.1. [Pilot measurements](docs/pitch-review-harness-pilot.md) · [Release notes](releases/0.14.3.md)
 
 # Director 0.14.2
 
